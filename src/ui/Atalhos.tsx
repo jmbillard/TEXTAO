@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ETIQUETAS } from '../modelo/tipos';
 import { atalho } from './util';
 
-type Tela = 'fila' | 'revisao' | 'cadastros' | 'comparar' | 'filmes' | 'configuracao' | 'andamento' | 'correcoes' | 'pauta' | 'montar';
+type Tela = 'fila' | 'revisao' | 'escrita' | 'cadastros' | 'comparar' | 'filmes' | 'configuracao' | 'andamento' | 'correcoes' | 'pauta' | 'montar';
 type Linha = [tecla: string, oque: string];
 
 const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
@@ -25,6 +25,22 @@ const LINHAS: Record<Tela, { titulo: string; linhas: Linha[] }> = {
       ...ETIQUETAS.map((e): Linha => [atalho(e.atalho), e.nome]),
       [atalho('Mod-Enter'), 'Manda para o Trello ou abre o próximo'],
       [atalho('Mod-z'), 'Desfaz'],
+    ],
+  },
+  // a folha de escrita (#190). Os próximos tickets acrescentam as linhas deles: comentar (#192), o modo limpo (#193) e
+  // o Enviar (#194)
+  escrita: {
+    titulo: 'Escrever',
+    linhas: [
+      ['/', 'Comandos: /locucao, /arte, /sonora, /edicao, /trilha, /locutor, /producao, /locacao, /comentario, /timecode, /arquivo, /texto'],
+      ['Tab', 'Confirma o tipo adivinhado (o "?"); de novo, troca pelo próximo'],
+      ['Shift+Tab', 'Troca pelo tipo anterior'],
+      [atalho('Mod-u'), 'Arte: o selecionado (no meio da frase) ou, sem seleção, o trecho todo'],
+      ['Enter', 'Trecho novo'],
+      ['↑ ↓ Enter', 'Escolhe no menu do / e no do tipo'],
+      ['Esc', 'Fecha os menus e os balões'],
+      [atalho('Mod-z'), 'Desfaz'],
+      [atalho('Mod-Shift-z'), 'Refaz'],
     ],
   },
   filmes: {
@@ -79,14 +95,15 @@ export function Atalhos({ tela, fazerTour }: { tela: Tela; fazerTour?: () => voi
       if (e.key === 'Escape') return setAberto(false);
       if (e.key !== '?' || e.metaKey || e.ctrlKey || e.altKey) return;
       const alvo = e.target as HTMLElement | null;
-      // no texto da revisão (que é travado) vale; em campos de digitar, o "?" é do campo
-      if (alvo?.closest('input, textarea, select')) return;
+      // no texto da revisão (que é travado) vale; em campos de digitar, o "?" é do campo, e também no texto da folha de
+      // escrita, onde se digita
+      if (alvo?.closest('input, textarea, select') || (tela === 'escrita' && alvo?.isContentEditable)) return;
       e.preventDefault();
       setAberto((x) => !x);
     };
     window.addEventListener('keydown', tecla);
     return () => window.removeEventListener('keydown', tecla);
-  }, []);
+  }, [tela]);
   const t = LINHAS[tela];
   return (
     <>
