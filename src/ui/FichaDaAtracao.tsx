@@ -5,6 +5,7 @@ import { Icone } from './icones';
 import { ImportarNoComputador } from './ImportarAcervo';
 import { chaveDeBusca } from './util';
 import { NadaNaBusca } from './pecas';
+import { BuscaNaLupa } from './BuscaNaLupa';
 
 /* A ficha da atração nos Cadastros: o acervo dela (as artes prontas), só para consultar. No computador, a seção Acervo
    fica no painel da direita e "Ver as N" troca a lista da esquerda pelo acervo; no celular, a ficha ocupa a tela. */
@@ -86,10 +87,7 @@ export function ListaDoAcervo({ nome, acervo, voltar }: { nome: string; acervo: 
           <Icone nome="direita" tam={13} />
           <b>{nome}</b> · acervo
         </span>
-        <label className="cad-busca">
-          <Icone nome="lupa" />
-          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar no acervo" autoFocus />
-        </label>
+        <BuscaNaLupa className="cad-busca" valor={busca} mudar={setBusca} ativa focar rotulo="Buscar no acervo" dica="Buscar no acervo" />
       </div>
       {!acervo && <p className="cad-vazio">Lendo o acervo…</p>}
       {acervo && (
@@ -171,10 +169,7 @@ export function FichaNoCelular({ nome, acervo, falha, voltar }: { nome: string; 
           {acervo.total > 0 && (
             <>
               <TiposDoAcervo acervo={acervo} />
-              <label className="cad-busca">
-                <Icone nome="lupa" />
-                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Tem essa arte?" enterKeyHint="search" />
-              </label>
+              <BuscaNaLupa className="cad-busca" valor={busca} mudar={setBusca} ativa rotulo="Tem essa arte?" dica="Tem essa arte?" />
               <section className="lista-cad" aria-label={`Acervo de ${nome}`}>
                 <LinhasDoAcervo artes={filtrar(acervo.artes, busca, null)} vazio={<NadaNaBusca termo={busca} onde="no acervo" className="cad-nada" />} />
               </section>

@@ -6,7 +6,7 @@ import { nomeComparavel } from '../modelo/ligarPeloNome';
 import type { CampanhaDoCard } from '../modelo/campanhas';
 import { LER_ANDAMENTO_MS } from './fila';
 import { Icone } from './icones';
-import { MarcaTexto, RABISCOS, tracoDe } from './pecas';
+import { MarcaTexto, RABISCOS, tracoDe, Vazio } from './pecas';
 import { CaixinhaDoDesfazer } from './desfazer';
 import { EtiquetaDaCampanha } from './EtiquetaDaCampanha';
 import { CampanhaDoFiltro, EscolherCampanha } from './FiltroDaCampanha';
@@ -486,7 +486,7 @@ function BlocoAberto({ b, entregueDias, hoje, acoes, solta, bloco }: PropsDoBloc
               )}
             </h3>
             {!b.colunas[k].length ? (
-              <p className="prod-nada">nada aqui</p>
+              <Vazio className="prod-nada">nada aqui</Vazio>
             ) : k === 'entregue' ? (
               // as divisórias por dia (#159): o dia da entrega, do mais novo para o mais velho
               diasDoEntregue(b.colunas[k], hoje).map((d) => (

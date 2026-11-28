@@ -97,7 +97,8 @@
 .coluna-caixa { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 10px 12px 12px; border: 1px solid var(--regua); border-radius: 12px; background: var(--papel); }
 .coluna-rotulo { margin: 0; font: 600 11px var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinta3); }
 .coluna-n { display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: 4px; padding: 0 5px; border-radius: 999px; background: var(--neutro); color: var(--tinta2); letter-spacing: 0; }
-.coluna-ninguem { margin: 0; font-size: 13px; color: var(--tinta3); }
+.coluna-ninguem { margin: 0; }
+.coluna-ninguem:not(.vazio-a-mao) { font-size: 13px; color: var(--tinta3); }
 .coluna-escrever { width: 100%; min-height: 34px; padding: 7px 9px; border: 1px dashed var(--regua-forte); border-radius: 8px; background: var(--cartao); color: var(--tinta); font: 500 12.5px/1.4 var(--mono); resize: vertical; }
 .coluna-escrever:focus { outline: 0; border-style: solid; border-color: var(--ultra); }
 .coluna-dica { margin: -2px 0 0; font: 400 11px/1.35 var(--sans); color: var(--tinta3); }

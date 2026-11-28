@@ -76,6 +76,9 @@ async function noComputador(navegador, url, github, tema) {
 
   // o resumo e a trilha: onde estamos
   assert.match(await p.locator('.and-resumo').textContent(), /^5 de 11 tickets das frentes estão feitos\. Na meta de longo prazo, estamos entre a etapa 1 \(Espelho, quase pronta\) e a 2/);
+  // #171: o número que importa, circulado à caneta: só o 5 (um por tela)
+  assert.equal(await p.locator('.and-resumo .numero-circulado').textContent(), '5');
+  assert.equal(await p.locator('.numero-circulado').count(), 1, 'um número circulado por tela');
   assert.deepEqual(await textos(p.locator('.and-etapa strong')), ['Espelho', 'O PROMeiro manda', 'Designer no PROMeiro', 'Desligar o Trello', 'Banco próprio', 'O n8n sai']);
   assert.equal(await p.locator('.and-etapa[aria-current="step"] strong').textContent(), 'O PROMeiro manda');
 

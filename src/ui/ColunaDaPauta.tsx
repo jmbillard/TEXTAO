@@ -4,6 +4,7 @@ import { lerDemanda } from '../modelo/escala';
 import type { DemandaParaDistribuir } from '../modelo/ausencias';
 import type { ItemArrastado } from './arrastar';
 import { DIAS_DA_SEMANA, partes } from './pecasDaPauta';
+import { Vazio } from './pecas';
 
 /* Montar a pauta, a coluna lateral (#126): as caixas "Para distribuir" e "Sem escala" (a "Fora" é a das ausências,
    AusenciasDaPauta.tsx). Cada item arrasta (no mouse, o item inteiro; no dedo, pela alça ⠿) e tem também o seu
@@ -173,7 +174,7 @@ export function SemEscala({ pessoas, destinos, escalar, arraste: { iniciar, arra
           ))}
         </ul>
       ) : (
-        <p className="coluna-ninguem">todos escalados</p>
+        <Vazio className="coluna-ninguem">todos escalados</Vazio>
       )}
     </section>
   );

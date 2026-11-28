@@ -348,10 +348,12 @@ async function noComputador(navegador, url, tema) {
   await caso(p, 'Arena do Domingo').locator('.linha-dup').click();
 
   // a busca, pela claquete sem acento; o contador da aba não muda
+  await p.locator('.cad-busca input').focus();
   await p.locator('.cad-busca input').fill('cozinha de vo');
   await p.waitForFunction(() => document.querySelectorAll('.linha-dup').length === 1);
   assert.deepEqual(await claquetes(p), ['Cozinha de Vó 18/11']);
   assert.equal((await aba.locator('.rot').textContent()).trim(), 'Duplicadas 6');
+  await p.locator('.cad-busca input').focus();
   await p.locator('.cad-busca input').fill('');
   await p.waitForFunction(() => document.querySelectorAll('.linha-dup').length === 6);
 

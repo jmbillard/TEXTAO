@@ -5,6 +5,7 @@ import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { diaVizinho } from '../modelo/pauta';
 import { MESES, partes } from './pecasDaPauta';
 import './conferirPauta.css';
+import { Vazio } from './pecas';
 
 /* Montar a pauta, conferir e publicar (#127): as telas "conferir" e "publicada" do protótipo aprovado, e a faixa da
    publicação na tela de montar (o estado, o Desfazer da última e o histórico). A conferência é a regra pura de
@@ -231,7 +232,7 @@ export function DiaPublicado({ dados, posicoes, recado, voltar, desfazer, irPara
                   </div>
                 ))
               ) : (
-                <p className="pub-ninguem">ninguém</p>
+                <Vazio pequeno className="pub-ninguem">ninguém</Vazio>
               )}
             </section>
           );

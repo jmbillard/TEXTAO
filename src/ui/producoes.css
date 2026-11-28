@@ -182,7 +182,7 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
 .prod-recente { grid-column: 1 / -1; display: grid; grid-template-rows: 1fr; font: 600 15px/1 Caveat, cursive; letter-spacing: 0; text-transform: none; color: var(--tinta3); transition: grid-template-rows 0.22s var(--suave), opacity 0.18s; }
 .prod-recente > span { min-height: 0; overflow: hidden; display: block; line-height: 1.2; transform: rotate(-1.5deg); transform-origin: left; }
 .prod-blocos[data-rolada] .prod-recente { grid-template-rows: 0fr; opacity: 0; }
-.prod-nada { margin: 2px 4px; font: 600 17px/1 Caveat, cursive; color: var(--tinta3); transform: rotate(-1.5deg); }
+.prod-nada { margin: 2px 4px; }
 /* as divisórias por dia no Entregue (#159): o dia curto e um fio até a borda */
 .prod-dia + .prod-dia { margin-top: 10px; }
 .prod-dia-nome { display: flex; align-items: center; gap: 8px; margin: 2px 2px 6px; font: 600 11px var(--sans); color: var(--tinta3); }

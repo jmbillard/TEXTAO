@@ -296,6 +296,7 @@ async function noComputador(navegador, url, tema) {
   await lista.locator('.filtro-tipos button', { hasText: 'sem tipo' }).click();
   assert.deepEqual(await lista.locator('.arte-acervo .t').allTextContents(), ['PLATEIA', 'SABADO 7 15', 'VEM AÍ']);
   await lista.locator('.filtro-tipos button', { hasText: 'Todos' }).click();
+  await lista.locator('.cad-busca input').focus();
   await lista.locator('.cad-busca input').fill('sabado');
   assert.deepEqual(
     await lista.locator('.arte-acervo').evaluateAll((ls) => ls.map((l) => `${l.querySelector('.t').textContent} ${l.querySelector('.s').textContent}`)),
@@ -353,10 +354,12 @@ async function noCelular(navegador, url, tema) {
   // só consulta: nada de keys, novo pacote, lixeira ou formulário
   assert.equal(await p.locator('.ficha-celular .key, .pacote-cad, .lixo-cad, .form-cad, .atracao-cad, .area-importar').count(), 0, 'no celular, a ficha é só consulta');
   assert.match(await ficha.locator('.importar-no-computador').textContent(), /^Importar CSV é no computador\./);
+  await ficha.locator('.cad-busca input').focus();
   await ficha.locator('.cad-busca input').fill('sábado');
   assert.deepEqual(await ficha.locator('.arte-acervo .t').allTextContents(), ['PRÓXIMO SÁBADO', 'SÁBADO', 'SÁBADO', 'SÁBADO 3:00', 'SABADO 7 15']);
   await semRolagemDeLado(p, `celular ${tema}`);
   await capturar(p, `ficha-celular-${tema === 'dark' ? 'escuro' : 'claro'}`);
+  await ficha.locator('.cad-busca input').focus();
   await ficha.locator('.cad-busca input').fill('nenhuma assim');
   await ficha.locator('.cad-vazio', { hasText: 'Nada com “nenhuma assim” no acervo.' }).waitFor();
   await ficha.locator('.trilha-cad .botao-texto').tap();

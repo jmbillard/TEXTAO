@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { lerPadeiros, ligarPadeiro, revogarPadeiro, type DesignerDoPadeiro, type EstadoDaChave, type Padeiro } from '../dados/armazenamento';
 import { Icone } from './icones';
 import './padeiros.css';
-import { NadaNaBusca } from './pecas';
+import { NadaNaBusca, NumeroCirculado } from './pecas';
 
 /* Aba Padeiros dos Cadastros (#137), só para administradores: os Padeiros que pediram a chave do Padeiro (um por
    usuário e por computador), com a sigla, o designer ligado e o último aviso. O pendente se liga a um designer
@@ -185,7 +185,8 @@ export function PainelDosPadeiros({ lista }: { lista: Padeiro[] | null }) {
       {lista && (
         <ul className="contagem-pad">
           <li>
-            <b>{n('pendente')}</b> {n('pendente') === 1 ? 'pendente' : 'pendentes'}
+            {/* os pendentes são a tarefa de quem administra: o número circulado (#171) */}
+            {n('pendente') ? <NumeroCirculado className="pad-pendentes">{n('pendente')}</NumeroCirculado> : <b>0</b>} {n('pendente') === 1 ? 'pendente' : 'pendentes'}
           </li>
           <li>
             <b>{n('ligada')}</b> {n('ligada') === 1 ? 'ligada' : 'ligadas'}

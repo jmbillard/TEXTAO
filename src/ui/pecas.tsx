@@ -52,6 +52,21 @@ export function Vazio({ children, pequeno = false, como: Como = 'p', className =
   return <Como className={`vazio-a-mao${pequeno ? ' pequeno' : ''}${className ? ` ${className}` : ''}`}>{children}</Como>;
 }
 
+/**
+ * O número da sua tarefa, circulado à caneta em `--ultra` (#171): um por tela (o "5 de 11" do Andamento, o da Minha
+ * pauta, os pendentes dos Padeiros). O traço é o da contagem de artes da fila; ao chegar, o círculo se escreve.
+ */
+export function NumeroCirculado({ children, traco = 0, className = '' }: { children: React.ReactNode; traco?: number; className?: string }) {
+  return (
+    <span className={`numero-circulado${className ? ` ${className}` : ''}`}>
+      {children}
+      <svg viewBox="0 0 64 44" preserveAspectRatio="none" aria-hidden="true">
+        <path pathLength={1} d={RABISCOS[traco % RABISCOS.length]} />
+      </svg>
+    </span>
+  );
+}
+
 /** O vazio da busca, à mão: "nada com “x”", e onde se buscou ("na fila"). */
 export function NadaNaBusca({ termo, onde, className = '' }: { termo: string; onde?: string; className?: string }) {
   return (

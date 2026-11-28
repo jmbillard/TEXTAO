@@ -50,6 +50,7 @@ import { semPracaNoComeco, semPracaNoFim } from '../modelo/pracas';
 import { SetaCurva } from './setaCurva';
 import { RABISCO } from './cena';
 import { caminhoDoIcone, Icone } from './icones';
+import { BuscaNaLupa } from './BuscaNaLupa';
 import { Marca, NadaNaBusca } from './pecas';
 import { plural } from './util';
 import { useTelaDeCelular } from './faixa';
@@ -1117,10 +1118,14 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
         pad={pode ? { ativa: padAberta, total: padeiros.pendentes, abrir: () => { setAba('atracoes'); setSemCad(false); setDupAberta(false); setPadAberta(true); setIlhasAbertas(false); setBusca(''); setFesta(null); fecharFicha(); } } : null}
         ilhas={{ ativa: ilhasAbertas, total: ilhas.dados?.ilhas.length ?? 0, abrir: () => { setAba('atracoes'); setSemCad(false); setDupAberta(false); setPadAberta(false); setIlhasAbertas(true); setBusca(''); setFesta(null); fecharFicha(); } }}
       />
-      <label className="cad-busca">
-        <Icone nome="lupa" />
-        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={ilhasAbertas ? 'Buscar ilha' : padAberta ? 'Buscar usuário, sigla ou designer' : dupAberta ? 'Buscar claquete' : semCad ? 'Buscar key ou claquete' : aba === 'atracoes' ? 'Buscar atração ou key' : aba === 'redatores' ? 'Buscar redator, key ou e-mail' : 'Buscar editor, key ou e-mail'} />
-      </label>
+      <BuscaNaLupa
+        className="cad-busca"
+        valor={busca}
+        mudar={setBusca}
+        ativa
+        rotulo="Buscar nos cadastros"
+        dica={ilhasAbertas ? 'Buscar ilha' : padAberta ? 'Buscar usuário, sigla ou designer' : dupAberta ? 'Buscar claquete' : semCad ? 'Buscar key ou claquete' : aba === 'atracoes' ? 'Buscar atração ou key' : aba === 'redatores' ? 'Buscar redator, key ou e-mail' : 'Buscar editor, key ou e-mail'}
+      />
     </div>
   );
   const prontoParaSalvar =
