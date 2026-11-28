@@ -53,6 +53,12 @@ Uma imagem de inspiração presa ao Roteiro (a foto de um ator, um frame, um pri
 arte a produzir e não entra na lista de artes.
 _Evitar_: arte, anexo
 
+**Cadeado** (do texto, na revisão):
+Na revisão, o texto do Roteiro fica como chegou (travado): só se marcam e classificam as artes. O cadeado, no canto da
+folha, destrava a edição do texto para quem pode editar, só para quem o abriu e só enquanto está no roteiro: ao sair,
+volta a travar. A mudança chega aos colegas pela sala ao vivo. Fica fora do celular, onde o texto é só de leitura.
+_Evitar_: modo de edição, desbloquear
+
 **Letra da chamada** (A, B, C…):
 A letra que a chamada ganha quando volta para ajuste **depois de liberada para exibição** (a exibição já gravou o id,
 e a versão não pode mais mudar): a chamada "vira letra", da A para a B, depois a C, e volta para avaliação. A claquete

@@ -1,0 +1,77 @@
+/* O cadeado da revisão (#188). Sem "unha": o estado vai na etiqueta e no fundo levemente tingido do texto. */
+
+.corpo.com-cadeado { position: relative; border-radius: 3px; transition: background-color 0.45s var(--suave), box-shadow 0.45s var(--suave); }
+.corpo.destravado {
+  background-color: color-mix(in srgb, var(--ultra) 4.5%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ultra) 14%, transparent);
+}
+.corpo.destravado .texto { caret-color: var(--ultra); }
+
+.cadeado-do-texto {
+  --mola: cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: absolute; top: 8px; right: 12px; z-index: 2;
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 26px; padding: 0 10px 0 7px; border-radius: 999px;
+  border: 1px solid var(--regua); background: var(--cartao); color: var(--tinta3);
+  font: 500 12px/1 var(--sans); cursor: pointer;
+  transition: color 0.3s var(--suave), background-color 0.3s var(--suave), border-color 0.3s var(--suave), box-shadow 0.3s var(--suave), transform 0.2s var(--suave);
+}
+.cadeado-do-texto:hover { color: var(--tinta); border-color: var(--regua-forte); }
+.cadeado-do-texto:active { transform: scale(0.96); }
+.cadeado-do-texto:focus-visible { outline: 2px solid var(--ultra); outline-offset: 2px; }
+.cadeado-do-texto.aberto { color: var(--ultra-tinta); background: var(--ultra-suave); border-color: color-mix(in srgb, var(--ultra) 30%, transparent); }
+
+.cadeado-do-texto svg { overflow: visible; flex: none; }
+.cadeado-do-texto .arco { transform-box: view-box; transform-origin: 14.5px 11px; }
+.cadeado-do-texto .caixa { transition: fill 0.3s var(--suave); }
+.cadeado-do-texto.aberto .caixa { fill: color-mix(in srgb, var(--ultra) 22%, transparent); }
+.cadeado-do-texto .buraco { transform-box: view-box; transform-origin: 10.5px 16px; }
+
+/* abrir: o arco sobe e gira para fora, em volta da perna da direita; a caixa dá um pulinho */
+.cadeado-do-texto.aberto .arco { animation: cadeado-abre 0.6s var(--suave) both; }
+.cadeado-do-texto.aberto .buraco { animation: cadeado-gira-chave 0.35s var(--suave) both; }
+.cadeado-do-texto.mexeu.aberto svg { animation: cadeado-pulo 0.5s var(--mola); }
+/* fechar: o arco volta, desce e encaixa com um tranco */
+.cadeado-do-texto.mexeu:not(.aberto) .arco { animation: cadeado-fecha 0.5s var(--suave) both; }
+.cadeado-do-texto.mexeu:not(.aberto) svg { animation: cadeado-tranco 0.5s var(--suave); }
+
+@keyframes cadeado-abre {
+  0% { transform: none; }
+  40% { transform: translateY(-3.5px); }
+  100% { transform: translateY(-3.5px) rotateY(180deg); }
+}
+@keyframes cadeado-fecha {
+  0% { transform: translateY(-3.5px) rotateY(180deg); }
+  55% { transform: translateY(-3.5px) rotateY(0deg); }
+  80% { transform: translateY(0.6px); }
+  100% { transform: none; }
+}
+@keyframes cadeado-gira-chave { from { transform: none; } to { transform: rotate(90deg); } }
+@keyframes cadeado-pulo { 0% { transform: none; } 35% { transform: translateY(-1.5px) scale(1.08); } 100% { transform: none; } }
+@keyframes cadeado-tranco { 0%, 60% { transform: none; } 78% { transform: translateY(1px) scale(0.94, 1.04); } 100% { transform: none; } }
+
+/* os dois rótulos ocupam o mesmo lugar e trocam com um deslize curto */
+.cadeado-do-texto .rotulos { display: inline-grid; justify-items: start; overflow: hidden; transition: width 0.35s var(--suave); }
+.cadeado-do-texto .rotulos > span { grid-area: 1 / 1; white-space: nowrap; transition: opacity 0.25s var(--suave), transform 0.35s var(--suave); }
+.cadeado-do-texto .r-destravado { opacity: 0; transform: translateY(70%); }
+.cadeado-do-texto.aberto .r-travado { opacity: 0; transform: translateY(-70%); }
+.cadeado-do-texto.aberto .r-destravado { opacity: 1; transform: none; }
+
+/* a tentativa de digitar com o texto travado */
+.cadeado-do-texto.chacoalha { animation: cadeado-chacoalha 0.45s var(--suave); }
+@keyframes cadeado-chacoalha {
+  0%, 100% { transform: none; }
+  20% { transform: translateX(-3px) rotate(-4deg); }
+  40% { transform: translateX(3px) rotate(3deg); }
+  60% { transform: translateX(-2px) rotate(-2deg); }
+  80% { transform: translateX(1px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .corpo.com-cadeado, .cadeado-do-texto, .cadeado-do-texto .caixa, .cadeado-do-texto .rotulos, .cadeado-do-texto .rotulos > span { transition: none; }
+  .cadeado-do-texto .arco, .cadeado-do-texto .buraco, .cadeado-do-texto svg, .cadeado-do-texto.chacoalha { animation: none !important; }
+  .cadeado-do-texto.aberto .arco { transform: translateY(-3.5px) scaleX(-1); }
+  .cadeado-do-texto.aberto .buraco { transform: rotate(90deg); }
+}
+
+@media print { .cadeado-do-texto { display: none; } .corpo.destravado { background: none; box-shadow: none; } }

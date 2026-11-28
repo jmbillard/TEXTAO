@@ -15,6 +15,7 @@ import { redoDepth, undoDepth } from '@tiptap/pm/history';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
+import type { Transaction } from '@tiptap/pm/state';
 import { abrirSala, corDe, ponteirosDaSala, presentes as listarPresentes, type Presente, type Sala } from '../dados/colaboracao';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { meuCursor } from './cursores';
@@ -49,6 +50,8 @@ import { letraEVersaoDoRoteiro, marcaDaLetraEVersao } from '../modelo/letraEVers
 import { apelidoDoRoteiro, useApelidos, versoesAMaoDoRoteiro } from '../dados/apelidos';
 import { versoesDaChamada, versoesDoRoteiro } from '../modelo/versoesDoRoteiro';
 import { diaEmSaoPaulo, nomeSemAsVersoes } from '../modelo/pauta';
+import { cadeadoNaRevisao } from '../modelo/cadeado';
+import { CadeadoDoTexto } from './CadeadoDoTexto';
 
 
 /** No tour, quanto tempo o Enviar do exemplo mostra "Mandando…" antes de voltar para a fila. */
@@ -473,10 +476,22 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   const ultimoAvisoTexto = useRef(0);
   const avisoTexto = useRef(() => {});
   avisoTexto.current = () => {
+    // o cadeado chacoalha a cada tentativa, para mostrar onde se destrava; o aviso escrito é que espera os 6 s
+    if (temCadeadoRef.current) setChacoalhar((n) => n + 1);
     if (Date.now() - ultimoAvisoTexto.current < 6000) return;
     ultimoAvisoTexto.current = Date.now();
-    avisar('Aqui o texto fica como chegou: dá para marcar e classificar as artes.');
+    avisar(temCadeadoRef.current ? 'Aqui o texto fica como chegou. Para mexer nele, abra o cadeado.' : 'Aqui o texto fica como chegou: dá para marcar e classificar as artes.');
   };
+  // O cadeado (#188): destrava o texto só para quem o abriu (veja `cadeadoNaRevisao`). Vive só nesta tela: ao sair do
+  // roteiro, a folha desmonta e o texto volta a travar
+  const [destravado, setDestravado] = useState(false);
+  const destravadoRef = useRef(destravado);
+  destravadoRef.current = destravado;
+  const temCadeadoRef = useRef(false);
+  const [chacoalhar, setChacoalhar] = useState(0);
+  /* A mudança de texto com o cadeado aberto. Hoje passa como está: muda o texto do roteiro, que é o da fila. O #196
+     troca aqui, num roteiro escrito no PROMeiro, a mudança por uma sugestão ao redator (e devolve `false`). */
+  const mudancaComCadeado = useRef<(tr: Transaction) => boolean>(() => true);
   const [docVersao, setDocVersao] = useState(0);
   const [selVersao, setSelVersao] = useState(0);
   const [salvo, setSalvo] = useState(true);
@@ -543,6 +558,13 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   // o celular (até 600px): uma página só, com a ficha e o "Para revisar" recolhíveis e o texto só de leitura
   const celular = useTelaDeCelular();
   const [fichaAberta, setFichaAberta] = useState(false);
+  // o cadeado só aparece para quem pode editar, fora do celular, e depois que o texto chegou da sala
+  const temCadeado = cadeadoNaRevisao({ podeEditar: !leitura, celular }) && liberado;
+  temCadeadoRef.current = temCadeado;
+  // girar o aparelho para o celular tira o cadeado: o texto volta a travar
+  useEffect(() => {
+    if (!temCadeado) setDestravado(false);
+  }, [temCadeado]);
   const [pendenciasAbertas, setPendenciasAbertas] = useState(false);
 
   const area = useRef<HTMLDivElement>(null);
@@ -558,7 +580,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     extensions: [
       Document, Paragraph, Text, Bold, Italic, HardBreak,
       Arte, Etiqueta, Imagem, Linha, Celula, Reconhecimento, Teclado.configure({ programa: () => metaRef.current.programa }),
-      SoMarcas.configure({ aviso: () => avisoTexto.current() }),
+      SoMarcas.configure({ aviso: () => avisoTexto.current(), destravado: () => destravadoRef.current, comCadeado: (tr) => mudancaComCadeado.current(tr) }),
       ...(sala
         ? [
             Collaboration.configure({ document: sala.doc, field: 'doc' }),
@@ -1899,7 +1921,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
               </div>
             )}
             <div
-              className={`${colunas ? 'corpo em-colunas' : 'corpo'} ${sincronizado ? '' : 'chegando'} ${sonorasNoTexto ? '' : 'sonoras-recolhidas'}`}
+              className={`${colunas ? 'corpo em-colunas' : 'corpo'} ${sincronizado ? '' : 'chegando'} ${sonorasNoTexto ? '' : 'sonoras-recolhidas'} ${temCadeado ? 'com-cadeado' : ''} ${destravado ? 'destravado' : ''}`}
               hidden={vista === 'original' && temOriginal}
               onContextMenu={aoMenuDeContexto}
               onClick={celular ? tocarNoTexto : undefined}
@@ -1912,6 +1934,17 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
                 setSelVersao((v) => v + 1);
               }}
             >
+              {temCadeado && (
+                <CadeadoDoTexto
+                  aberto={destravado}
+                  chacoalhar={chacoalhar}
+                  mudar={() => {
+                    setDestravado((v) => !v);
+                    // o foco volta ao texto, onde a pessoa estava, para já sair digitando
+                    editor?.commands.focus();
+                  }}
+                />
+              )}
               <EditorContent editor={editor} />
             </div>
             <svg ref={camadaDoTexto} className="camada-riscos camada-do-texto" aria-hidden="true" />
