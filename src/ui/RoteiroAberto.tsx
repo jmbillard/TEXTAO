@@ -85,9 +85,7 @@ const NOME_DO_ESTADO: Record<EstadoDaArte, string> = { 'a-fazer': 'a fazer', pro
 function ArtesDoEditor({ artes }: { artes: ArtesDoRoteiro }) {
   const arte = (a: ArteDoRoteiro, k: number) => (
     <li key={`${a.origem}-${k}`} className={`arte-aberta ${a.estado}`} data-estado={a.estado} data-origem={a.origem}>
-      <span className="st" aria-hidden="true">
-        {a.estado === 'entregue' && <Icone nome="certo" tam={10} traco={3.2} />}
-      </span>
+      <span className="st" aria-hidden="true" />
       <span className="t">{a.texto}</span>
       <span className="estado-da-arte">{NOME_DO_ESTADO[a.estado]}</span>
       <span className="meta">

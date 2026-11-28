@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { lerListaDoPortainer, type ListaDoPortainer, type VariavelDoPortainer } from '../dados/armazenamento';
 import { Icone } from './icones';
-import { Marca } from './pecas';
+import { BolinhaDeEstado, Marca } from './pecas';
 import { useTelaDeCelular } from './faixa';
 import './configuracao.css';
 
@@ -118,7 +118,7 @@ function Grupo({ id, titulo, variaveis, linha, vazio, classe, comPorque = false,
           <div className="cfg-vars">
             {variaveis.map((v) => (
               <code key={v.nome} className={classe} title={v.porque}>
-                {classe === 'pode' && <Icone nome="certo" tam={12} traco={2.4} />}
+                {classe === 'pode' && <BolinhaDeEstado estado="ok" />}
                 {v.porque === 'segredo' && <Icone nome="cadeado" tam={11} />}
                 {v.nome}
               </code>

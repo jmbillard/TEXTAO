@@ -25,7 +25,7 @@ import { EntradaDoCelular } from "./FilmesCelular";
 import { SequenciaDeFilmes } from "./SequenciaDeFilmes";
 import { Icone } from "./icones";
 import { LinkQuebrado } from "./LinkQuebrado";
-import { Duvida, Marca, RABISCOS, Riscado, TituloQueSeEscreve } from "./pecas";
+import { BolinhaDeEstado, Duvida, Marca, RABISCOS, Riscado, TituloQueSeEscreve } from "./pecas";
 import { AgendaDeFilmes } from "./AgendaDeFilmes";
 
 /* A aba Filmes: as prévias de filmes. Solta-se o PDF, o navegador prepara as páginas e o servidor lê cada uma
@@ -837,7 +837,7 @@ function Pagina({
     );
   };
   const pronta = p.estado === "lida";
-  // o filme de cada pôster da página: o que pede atenção ganha o círculo à caneta; o enviado, o ✓ à mão
+  // o filme de cada pôster da página: o que pede atenção ganha o círculo à caneta; o enviado, a bolinha na quina
   const filmeDoPoster = (k: number) => p.filmes.find((x) => x.poster === k);
   return (
     <>
@@ -919,9 +919,7 @@ function Pagina({
                   {destaque === i && <Circulo traco={i} className="circulo mouse" />}
                   {pede && <Circulo traco={i + 1} className="circulo atencao" />}
                   {dele?.envio?.estado === "enviado" && (
-                    <svg className="visto" viewBox="0 0 32 26" role="img" aria-label="Foi para o Trello">
-                      <path d="M3 14 C 6 16, 9 19, 11 23 C 15 14, 21 7, 30 2" />
-                    </svg>
+                    <span className="visto" role="img" aria-label="Foi para o Trello" />
                   )}
                   <i>{i + 1}</i>
                 </span>
@@ -1062,8 +1060,8 @@ function MarcaDoFilme({
       </button>
     );
   return (
-    <span className="ficha-marca ok" aria-label="Pronto">
-      <Icone nome="certo" tam={12} traco={3} />
+    <span className="ficha-marca ok" role="img" aria-label="Pronto">
+      <BolinhaDeEstado estado="ok" tam="ficha" />
     </span>
   );
 }

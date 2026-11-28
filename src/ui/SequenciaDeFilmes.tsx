@@ -26,6 +26,7 @@ import {
 import { anotacao, AvisoDoPreparo, Circulo, Presentes, taoVendo, Titulo, usePreviaAberta } from './Filmes';
 import { Icone } from './icones';
 import { LinkQuebrado } from './LinkQuebrado';
+import { BolinhaDeEstado } from './pecas';
 import { semMovimento } from './util';
 import './sequenciaDeFilmes.css';
 
@@ -477,8 +478,8 @@ function MarcaDoCard({ s }: { s: FilmeNaSequencia }) {
       </span>
     );
   return (
-    <span className="ficha-marca ok" aria-label="Pronto">
-      <Icone nome="certo" tam={12} traco={3} />
+    <span className="ficha-marca ok" role="img" aria-label="Pronto">
+      <BolinhaDeEstado estado="ok" tam="ficha" />
     </span>
   );
 }

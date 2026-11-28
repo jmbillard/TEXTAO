@@ -44,7 +44,7 @@ import { ChaveDaVirada } from './ViradaDaConfiguracao';
 import { Icone } from './icones';
 import { Vagas } from './vagas';
 import { CaixinhaDoDesfazer, useDesfazerAdiado } from './desfazer';
-import { Marca, Vazio } from './pecas';
+import { BolinhaDeEstado, Marca, Vazio } from './pecas';
 import { useTelaDeCelular } from './faixa';
 import { quandoFoi } from './HistoricoDaConfiguracao';
 import './configuracao.css';
@@ -1586,7 +1586,7 @@ function DialogoDeConferir({
               {r.itens.map((i, k) => (
                   <li key={k} className={i.tipo}>
                     <span className="ico" aria-hidden>
-                      <Icone nome={i.tipo === 'erro' ? 'fechar' : i.tipo === 'aviso' ? 'atencao' : 'certo'} tam={12} traco={2.6} />
+                      {i.tipo === 'ok' ? <BolinhaDeEstado estado="ok" tam="ficha" /> : <Icone nome={i.tipo === 'erro' ? 'fechar' : 'atencao'} tam={12} traco={2.6} />}
                     </span>
                     <span>
                       <strong>{i.titulo}</strong>

@@ -280,12 +280,13 @@ button.seg-ciclo:hover { box-shadow: inset 0 0 0 1px var(--regua-forte); }
 .ciclo-em-pe .em-breve .nome { font-weight: 400; }
 .ciclo-em-pe li.ciclo-nota { display: block; font: 600 17px/1.1 Caveat, cursive; color: var(--tinta3); margin: -4px 0 10px 28px; padding: 0; }
 
-/* as artes no Editor: o estado (a fazer, produzindo, entregue, já existe) e a origem (do roteiro, do designer) */
+/* as artes no Editor: o estado (a fazer, produzindo, entregue, já existe) e a origem (do roteiro, do designer). O
+   estado é o círculo que enche: vazio, meio laranja, cheio de --ok (sem o ✓ verde, #171) ou neutro */
 .artes-abertas { list-style: none; margin: 0; padding: 0; }
 .arte-aberta { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 1px 10px; padding: 9px 0; border-top: 1px solid var(--regua); align-items: start; }
 .arte-aberta:first-child { border-top: 0; }
-.arte-aberta .st { width: 16px; height: 16px; border-radius: 50%; margin-top: 2px; display: grid; place-items: center; box-shadow: inset 0 0 0 1.5px var(--regua-forte); color: transparent; }
-.arte-aberta.entregue .st { background: var(--ok); box-shadow: none; color: var(--papel); }
+.arte-aberta .st { width: 16px; height: 16px; border-radius: 50%; margin-top: 2px; box-shadow: inset 0 0 0 1.5px var(--regua-forte); }
+.arte-aberta.entregue .st { background: var(--ok); box-shadow: none; }
 .arte-aberta.produzindo .st { box-shadow: inset 0 0 0 1.5px var(--ultra); background: conic-gradient(var(--ultra) 0 50%, transparent 50% 100%); }
 .arte-aberta.ja-existe .st { background: var(--neutro); box-shadow: none; }
 .arte-aberta .t { font: 600 13px/1.35 var(--mono); overflow-wrap: anywhere; }

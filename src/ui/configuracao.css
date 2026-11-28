@@ -126,7 +126,8 @@ h3.cfg-modal-rotulo { margin: 22px 0 6px; }
 .cfg-checks { list-style: none; margin: 0; padding: 0; border: 1px solid var(--regua); border-radius: 12px; overflow: hidden; }
 .cfg-checks li { display: flex; gap: 12px; padding: 11px 14px; align-items: flex-start; }
 .cfg-checks li + li { border-top: 1px solid var(--regua); }
-.cfg-checks li .ico { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; flex: none; margin-top: 1px; background: var(--ok-fundo); color: var(--ok); }
+/* o que confere leva só a bolinha de estado (sem o ✓ verde, #171); o aviso e o erro, o ícone no círculo */
+.cfg-checks li .ico { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; flex: none; margin-top: 1px; }
 .cfg-checks li.aviso .ico { background: var(--falta-fundo); color: var(--falta); }
 .cfg-checks li.erro { background: color-mix(in srgb, var(--perigo) 7%, var(--papel)); }
 .cfg-checks li.erro .ico { background: var(--perigo); color: var(--papel); }

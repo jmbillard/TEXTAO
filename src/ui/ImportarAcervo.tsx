@@ -18,7 +18,7 @@ import {
 } from '../dados/armazenamento';
 import { Icone } from './icones';
 import { chaveDeBusca, plural } from './util';
-import { NadaNaBusca, Vazio } from './pecas';
+import { BolinhaDeEstado, NadaNaBusca, Vazio } from './pecas';
 
 /* A importação do acervo por CSV (ADR 0005), na ficha da atração: a área "Importar CSV" (o botão ou o arquivo solto),
    a conferência antes de gravar (o placar, os filtros por estado, a busca, o ✕ que tira e devolve uma linha, as
@@ -210,7 +210,7 @@ function AvisosDaConferencia({ avisos, atracao, confirmou, confirmar, importarEm
     <>
       {pasta.estado === 'confere' && !ja && (
         <div className="conf-aviso ok" role="status">
-          <Icone nome="certo" tam={16} />
+          <BolinhaDeEstado estado="ok" tam="ficha" />
           <span>
             {pasta.total === 1 ? 'O caminho está' : `Os ${pasta.total} caminhos estão`} na pasta de output de <b>{atracao}</b>
             {daPasta}. Este arquivo nunca foi importado aqui.
