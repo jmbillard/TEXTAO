@@ -349,3 +349,13 @@ tr.sem-editor .pauta-nome { font-weight: 500; font-style: italic; color: var(--t
   .pauta-trilho, .pauta-trilho::after { transition-duration: 120ms !important; }
 }
 @keyframes pauta-esmaece { from { opacity: 0; } }
+
+/* a escala do dia, da planilha (o mock-up aprovado): a ilha e o turno ao lado do horário e o aviso de dois editores
+   na mesma ilha, com a bolinha da falta e o fundo levemente tingido (sem "unha") */
+.pauta-meta-parte::before { content: '·'; margin-right: 10px; color: var(--tinta3); }
+.pauta-coluna-onde { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.pauta-coluna-ilha { font: italic 500 12px var(--mono); color: var(--tinta3); white-space: nowrap; }
+.pauta-ilha-dividida { display: flex; align-items: baseline; gap: 6px; width: fit-content; max-width: 100%; margin-top: 8px; padding: 4px 9px 4px 8px; border-radius: 8px; background: var(--falta-fundo); font: 500 11.5px/1.35 var(--sans); color: var(--falta); animation: pauta-ilha-dividida-entra 0.32s var(--suave, ease-out) both; }
+.pauta-ilha-dividida .bolinha-estado { transform: translateY(-1px); }
+@keyframes pauta-ilha-dividida-entra { from { opacity: 0; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .pauta-ilha-dividida { animation: none; } }

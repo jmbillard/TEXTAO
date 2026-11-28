@@ -87,6 +87,7 @@ import { LIMITE_DA_FOTO, ROTA_DA_FOTO, criarFotosDaEdicao, fotoDoPedido, tokenBe
 import { ROTA_DAS_PRODUCOES, criarLimiteDePedidos, emSaoPaulo, margemDaConsulta, periodoDoPedido, producoesDoPeriodo } from './api-das-producoes.mjs';
 import { LIMITE_DA_PREVIA, ROTA_DA_PREVIA, linkDaAbaFilmes, previaDoPedido } from './previa-por-email.mjs';
 import { diferencasDaFoto, lerAFoto } from '../src/modelo/fotoDaPlanilha.ts';
+import { escalaNaPauta, foraPelaPlanilha } from '../src/modelo/escalaNaPauta.ts';
 import { demandasQueEntram } from '../src/modelo/colarDaPlanilha.ts';
 import { conferirHorarios, horariosArrumados, horariosDaConfiguracao } from '../src/modelo/horariosDoCartao.ts';
 import { criarAndamento } from './andamento.mjs';
@@ -2258,6 +2259,41 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
    * o apelido da planilha, e o aplicar usa o PUT e as ausências.
    */
   /**
+   * A escala dos dias para a Pauta da edição (o mock-up aprovado: "06:00–15:00 · AVID 30 · manhã"): a ilha, o turno e
+   * quem divide a ilha de cada editor (src/modelo/escalaNaPauta.ts) e quem a planilha diz que está fora. Enquanto a
+   * montagem vem da planilha, as posições saem da foto que o n8n manda (#133), lida pelo colar da planilha (lerAFoto);
+   * no dia publicado que vale (#134), da escala publicada. Sem foto e sem publicação, nada. Só lê.
+   * @returns { escala, foraDaPlanilha: [{ dia, fora }] }
+   */
+  async function escalaDaPauta(dias, publicadas) {
+    const valem = new Map(publicadas.filter((p) => p.vale).map((p) => [p.dia, p]));
+    const fotos = dias.map((dia) => [dia, valem.has(dia) ? null : fotosDaEdicao.doDia(dia)]);
+    if (!valem.size && !fotos.some(([, f]) => f)) return { escala: [], foraDaPlanilha: [] };
+    const turnos = turnosDaConfiguracao(configuracao.valores());
+    const todas = ilhas.todas();
+    const porDia = [];
+    const foraDaPlanilha = [];
+    let ctx = null;
+    for (const [dia, foto] of fotos) {
+      if (valem.has(dia)) {
+        porDia.push({ dia, posicoes: valem.get(dia).posicoes });
+        continue;
+      }
+      if (!foto) continue;
+      try {
+        ctx ??= { editores: (await areas.nomesDosCadastros(cadastros)).editor, apelidos: await areas.apelidosDosEditores(cadastros), ilhas: todas };
+        const lida = lerAFoto(foto.linhas, { ...ctx, dia, turnos }, []);
+        porDia.push({ dia, posicoes: lida.posicoes });
+        foraDaPlanilha.push({ dia, fora: lida.fora });
+      } catch (e) {
+        // sem os cadastros (o Teable fora do ar), a Pauta sai sem a ilha: não é motivo para falhar
+        console.error('[pauta] não deu para ler a foto da planilha de', dia, e.message);
+      }
+    }
+    return { escala: escalaNaPauta(porDia, { ilhas: todas, turnos }), foraDaPlanilha };
+  }
+
+  /**
    * A semana lado a lado com a planilha (#133), só para a coordenação: GET /api/montar-pauta/foto?dia= (sem ele, amanhã)
    * devolve a foto mais nova da planilha para o dia ({ aba, lidaEm, recebidaEm, confirmadaEm, todasAsAbas, linhas,
    * mesclas }, ou null), o que o colar da planilha (#130) leu dela (`daFoto`: as posições e quem está fora) e as
@@ -4081,8 +4117,11 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // o resumo do administrador olha a pauta inteira, com o que ficou de fora
       const resumo = cadastros.podeApagar(eu.email) ? { resumo: resumoDaPauta(cruzadas, s.alteradoEm) } : {};
       // quem está fora (#128): todos veem "fora"; o motivo e a observação, só a coordenação e os administradores
-      const fora = foraNaPauta(ausencias.noPeriodo(dias[0], dias.at(-1)), dias, escala.ehCoordenacao(eu.email) || cadastros.podeApagar(eu.email));
-      return json(res, 200, { ...naTela, editores, linhas: vistas, filtro, voce, fora, ...resumo });
+      // e quem a planilha diz que está fora (DM, folga, férias), sem o motivo, junto das ausências do PROMeiro
+      const daEscala = await escalaDaPauta(dias, publicadas);
+      const fora = foraPelaPlanilha(foraNaPauta(ausencias.noPeriodo(dias[0], dias.at(-1)), dias, escala.ehCoordenacao(eu.email) || cadastros.podeApagar(eu.email)), daEscala.foraDaPlanilha);
+      // a ilha, o turno e quem divide a ilha de cada editor em cada dia (o mock-up), da planilha ou da escala publicada
+      return json(res, 200, { ...naTela, editores, linhas: vistas, filtro, voce, fora, escala: daEscala.escala, ...resumo });
     }
     if (caminho === '/api/montar-pauta') return rotaDeMontarAPauta(req, res, eu);
     if (caminho === '/api/montar-pauta/foto') return rotaDaFotoDoDia(req, res, eu);

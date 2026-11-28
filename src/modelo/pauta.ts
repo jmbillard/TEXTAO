@@ -6,6 +6,7 @@
    Produções (#96) pela chave. Os filtros pessoais e o resumo do administrador (#99) também moram aqui. */
 import type { CaminhosDaArte } from './caminhosDaArte';
 import type { ForaNaPauta } from './ausencias.ts';
+import type { EscalaNaPauta } from './escalaNaPauta.ts';
 import { campanhasDasProducoes, type CampanhaDoCard } from './campanhas.ts';
 import { PARADAS, continua } from './frasePartida.ts';
 import { nomeComparavel } from './ligarPeloNome.ts';
@@ -95,8 +96,11 @@ export interface LeituraDaPauta {
   /** 'copia': o Postgres do Teable não respondeu, e a pauta saiu da última cópia local, tirada em `copiaEm` */
   origem: 'banco' | 'copia';
   copiaEm: string | null;
-  /** quem está fora em cada dia (#128): o motivo e a observação só para a coordenação e os administradores */
+  /** quem está fora em cada dia (#128): o motivo e a observação só para a coordenação e os administradores; também quem
+      a planilha diz que está fora, sem o motivo */
   fora?: ForaNaPauta[];
+  /** a ilha, o turno e quem divide a ilha de cada editor em cada dia (escalaNaPauta), da planilha ou da escala publicada */
+  escala?: EscalaNaPauta[];
 }
 
 const FUSO = 'America/Sao_Paulo';

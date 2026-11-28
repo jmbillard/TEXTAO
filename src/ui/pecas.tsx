@@ -39,7 +39,7 @@ export const tracoDe = (id: string) => [...id].reduce((h, c) => h + c.charCodeAt
  * as Produções, a busca, o card aberto e a ficha do filme). A cor vem do estado: a entrada neutra, produzindo em
  * --ultra, aprovação, entregue em --ok, arquivada; o resto é a bolinha neutra. Na ficha, o "card" e o "sem card" vêm
  * vazados. Fora das etapas, o estado "ok" (pronto, confere, pode) é a mesma bolinha em --ok: é ela, e nunca um ✓
- * verde, que diz que está tudo certo (#171).
+ * verde, que diz que está tudo certo (#171). O "falta" pede atenção (a ilha dividida da Pauta).
  * @param tam 'pequena' (6 px, nas linhas e nos cards) ou 'ficha' (8 px, na ficha e no card aberto)
  */
 export function BolinhaDeEstado({ estado, tam = 'pequena', className = '' }: { estado: string; tam?: 'pequena' | 'ficha'; className?: string }) {

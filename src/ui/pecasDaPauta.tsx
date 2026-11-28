@@ -16,6 +16,7 @@ import { armazenamento } from '../dados/armazenamento';
 import { ApelidoDaClaquete, MarcaDaLetraEVersao } from './Apelido';
 import { DE_ONDE, dicaDasVersoes, SufixoDasVersoes, useCodigoDasVersoes } from './CodigoDasVersoes';
 import { sufixoDasVersoes, versoesDaChamada, type FonteDasVersoes } from '../modelo/versoesDoRoteiro';
+import { naEscala, type EscalaNaPauta } from '../modelo/escalaNaPauta';
 
 /* As peças da Pauta da edição que a Semana (#94) e o Dia (#97) usam igual: as datas escritas, as versões da chamada
    como o código no padrão (#95), a claquete com a produção da arte (#96), o item da pauta (claquete ou tarefa, com o
@@ -171,6 +172,24 @@ export function ItemDaPauta({ linha, abrir, compacta = false, comProducao = true
   );
 }
 
+/**
+ * Dois editores na mesma ilha (a parte do Montar que quem lê a Pauta vê, como no mock-up): a bolinha da falta e "AVID 30
+ * também com Gil Moura, das 7h às 16h". Pela regra do Montar (o mesmo turno, a mesma sala), lida da planilha. Sem
+ * ninguém dividindo, nada.
+ */
+export function IlhaDividida({ escala }: { escala: EscalaNaPauta | null | undefined }) {
+  if (!escala?.divide.length) return null;
+  const com = escala.divide.map((d) => `${d.editor}${d.horario ? `, das ${d.horario}` : ''}`).join(' e ');
+  return (
+    <span className="pauta-ilha-dividida" role="note">
+      <BolinhaDeEstado estado="falta" />
+      <span>
+        {escala.ilha} também com {com}
+      </span>
+    </span>
+  );
+}
+
 /** O ⚑ com o número de avisos daquele editor naquele dia; o texto abre ao passar o mouse ou ao tocar. */
 export function Avisos({ avisos, rotulo }: { avisos: LinhaDaPauta[]; rotulo: string }) {
   const [aberto, setAberto] = useState(false);
@@ -263,10 +282,10 @@ export interface ClaqueteNaTela {
  * Onde a claquete abre (#160, alternativa A, escolhida pelo usuário): o card aberto no centro (CardAberto), que cresce
  * do card clicado e volta para ele ao fechar; no celular, a tela toda. Dentro, a ficha da claquete.
  */
-export function ClaqueteAberta({ aberta, linhas, hoje, voce, fechar }: { aberta: ClaqueteNaTela; linhas: readonly LinhaDaPauta[]; hoje: string; voce: string | null | undefined; fechar: () => void }) {
+export function ClaqueteAberta({ aberta, linhas, hoje, voce, escala, fechar }: { aberta: ClaqueteNaTela; linhas: readonly LinhaDaPauta[]; hoje: string; voce: string | null | undefined; escala?: readonly EscalaNaPauta[]; fechar: () => void }) {
   return (
     <CardAberto origem={aberta.origem} titulo="pauta-ficha-titulo" fechar={fechar}>
-      <FichaDaClaquete linha={aberta.linha} linhas={linhas} hoje={hoje} voce={voce} peloLapis={aberta.peloLapis} />
+      <FichaDaClaquete linha={aberta.linha} linhas={linhas} hoje={hoje} voce={voce} escala={escala} peloLapis={aberta.peloLapis} />
     </CardAberto>
   );
 }
@@ -276,7 +295,9 @@ export function ClaqueteAberta({ aberta, linhas, hoje, voce, fechar }: { aberta:
  * #156), as linhas da mesma atração com versões diferentes juntas (a mesma chave), os dias em que ela aparece na pauta
  * lida, a produção da arte de cada praça e os avisos da posição naquele dia.
  */
-export function FichaDaClaquete({ linha: daPauta, linhas: todas, hoje, voce, peloLapis = false }: { linha: LinhaDaPauta; linhas: readonly LinhaDaPauta[]; hoje: string; voce?: string | null; peloLapis?: boolean }) {
+export function FichaDaClaquete({ linha: daPauta, linhas: todas, hoje, voce, escala, peloLapis = false }: { linha: LinhaDaPauta; linhas: readonly LinhaDaPauta[]; hoje: string; voce?: string | null; escala?: readonly EscalaNaPauta[]; peloLapis?: boolean }) {
+  // a ilha do editor no dia (da planilha), como no mock-up: "Na pauta de X · AVID 22 · 14:00–22:53"
+  const naIlha = naEscala(escala, daPauta.dia, daPauta.editor);
   useApelidos();
   const linha = comApelidoNaPauta(daPauta);
   const linhas = todas.filter((l) => l.tipo === 'claquete' && (l.id === linha.id || (!!linha.chave && l.chave === linha.chave))).map(comApelidoNaPauta);
@@ -327,8 +348,10 @@ export function FichaDaClaquete({ linha: daPauta, linhas: todas, hoje, voce, pel
             Na pauta de <b>{daPauta.editor}</b>
           </>
         )}
+        {naIlha?.ilha && <> · {naIlha.ilha}</>}
         {daPauta.turno && <> · {turnoEscrito(daPauta.turno)}</>}
       </p>
+      <IlhaDividida escala={naIlha} />
       {/* o apelido da claquete (#154), com ou sem roteiro no PROMeiro; o lápis abre o campo (#156) */}
       <ApelidoDaClaquete alvo={{ claquete: daPauta.texto }} claquete={daPauta.texto} versoes={lidasDaLinha(daPauta)} dia={daPauta.dia} podeMudar={podeMudar} pedidoDoLapis={pedidoDoLapis} />
 

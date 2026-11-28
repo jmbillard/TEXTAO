@@ -1,7 +1,8 @@
 import { colunasDoDia, contaDoEditor, ehDaPessoa, recadoDoDia, type LeituraDaPauta, type LinhaDaPauta } from '../modelo/pauta';
 import { ForaNaPautaTela } from './ForaNaPauta';
 import { BalaoDeInfo } from './BalaoDeInfo';
-import { Avisos, DIAS_DA_SEMANA, ItemDaPauta, MESES, partes, relativoA, turnoEscrito, type AbrirClaquete } from './pecasDaPauta';
+import { Avisos, DIAS_DA_SEMANA, IlhaDividida, ItemDaPauta, MESES, partes, relativoA, turnoEscrito, type AbrirClaquete } from './pecasDaPauta';
+import { naEscala, type EscalaNaPauta } from '../modelo/escalaNaPauta';
 import { NumeroCirculado, Vazio } from './pecas';
 
 /* A mesa do dia da Pauta da edição (#162, o mock-up aprovado): o recado do dia e, no alto, o "Minha pauta" de quem é
@@ -73,7 +74,7 @@ export function ListaDaPauta({ itens, abrir, vazio, compacta = false, comProduca
  * @param linhas as linhas da pauta do dia (as de outros dias ficam de fora)
  * @param voce o editor ligado ao e-mail da pessoa (null: ela não é editora)
  */
-export function MesaDaPauta({ linhas, dia, hoje, voce, fora, abrir, comSobra = true }: { linhas: readonly LinhaDaPauta[]; dia: string; hoje: string; voce: string | null | undefined; fora: LeituraDaPauta['fora']; abrir: AbrirClaquete; comSobra?: boolean }) {
+export function MesaDaPauta({ linhas, dia, hoje, voce, fora, escala, abrir, comSobra = true }: { linhas: readonly LinhaDaPauta[]; dia: string; hoje: string; voce: string | null | undefined; fora: LeituraDaPauta['fora']; escala?: readonly EscalaNaPauta[]; abrir: AbrirClaquete; comSobra?: boolean }) {
   const doDia = linhas.filter((l) => l.dia === dia);
   const colunas = colunasDoDia(doDia);
   const sobrou = colunas.find((c) => !c.editor)?.itens ?? [];
@@ -96,6 +97,8 @@ export function MesaDaPauta({ linhas, dia, hoje, voce, fora, abrir, comSobra = t
   if (!voce) return <div className="pauta-mesa so-lateral">{lateral}</div>;
   const minha = colunas.find((c) => ehDaPessoa(c.editor, voce));
   const estaFora = (fora ?? []).some((f) => f.dia === dia && ehDaPessoa(f.editor, voce));
+  // a ilha e o turno do dia (da planilha), como no mock-up: "06:00–15:00 · AVID 30 · manhã"
+  const naIlha = minha ? naEscala(escala, dia, minha.editor) : null;
   return (
     <div className="pauta-mesa">
       <section className="pauta-folha pauta-minha desliza" aria-label="Minha pauta">
@@ -105,10 +108,13 @@ export function MesaDaPauta({ linhas, dia, hoje, voce, fora, abrir, comSobra = t
             <h2>{minha?.editor ?? voce}</h2>
             <div className="pauta-minha-meta">
               {estaFora ? <span>fora</span> : !minha ? <span>sem pauta neste dia</span> : <span>{turnoEscrito(minha.turno) || 'sem horário'}</span>}
+              {!estaFora && naIlha?.ilha && <span className="pauta-meta-parte">{naIlha.ilha}</span>}
+              {!estaFora && naIlha?.turno && <span className="pauta-meta-parte">{naIlha.turno.toLowerCase()}</span>}
               {minha && minha.avisos.length > 0 && <Avisos avisos={minha.avisos} rotulo={`você, ${diaDaFolha(hoje, dia)}`} />}
               {/* a info que não é de claquete fica na posição (#172) */}
               {minha && minha.infos.length > 0 && <BalaoDeInfo textos={minha.infos} rotulo={`você, ${diaDaFolha(hoje, dia)}`} />}
             </div>
+            {!estaFora && <IlhaDividida escala={naIlha} />}
           </div>
           {minha && <ContaDoDia itens={minha.itens} sua />}
         </div>
