@@ -1,7 +1,7 @@
-import { CaminhosDaArte } from './CaminhosDaArte';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { escolhaLembradaDaPauta, lembrarNaPauta } from '../dados/armazenamento';
 import { EtiquetaDaCampanha } from './EtiquetaDaCampanha';
+import { CaminhosDaArte } from './CaminhosDaArte';
 import { ROTULO_DA_ETAPA, diaEmSaoPaulo, ehDaPessoa, lerVersoes, nomeSemAsVersoes, resumoDaProducao, type LeituraDaPauta, type LinhaDaPauta, type ProducaoNaPauta } from '../modelo/pauta';
 import { CardAberto, FecharOCardAberto } from './CardAberto';
 import { MenuDeContexto } from './MenuDeContexto';

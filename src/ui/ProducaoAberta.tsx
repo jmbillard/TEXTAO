@@ -1,6 +1,6 @@
-import { CaminhosDaArte } from './CaminhosDaArte';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { apelidoDaProducao, useApelidos } from '../dados/apelidos';
+import { CaminhosDaArte } from './CaminhosDaArte';
 import {
   armazenamento,
   lerProducaoAberta,
