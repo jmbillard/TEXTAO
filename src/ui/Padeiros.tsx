@@ -3,6 +3,7 @@ import { lerPadeiros, ligarPadeiro, revogarPadeiro, type DesignerDoPadeiro, type
 import { Icone } from './icones';
 import './padeiros.css';
 import { NadaNaBusca, NumeroCirculado } from './pecas';
+import { instanteDaAgenda } from './util';
 
 /* Aba Padeiros dos Cadastros (#137), só para administradores: os Padeiros que pediram a chave do Padeiro (um por
    usuário e por computador), com a sigla, o designer ligado e o último aviso. O pendente se liga a um designer
@@ -13,11 +14,8 @@ import { NadaNaBusca, NumeroCirculado } from './pecas';
 
 const ROTULOS: Record<EstadoDaChave, string> = { pendente: 'pendente', ligada: 'ligada', revogada: 'revogada' };
 
-const quando = (iso: string | null) => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  return `${d.getDate()}/${d.getMonth() + 1} ${d.getHours()}h${String(d.getMinutes()).padStart(2, '0')}`;
-};
+/** "sex 27/11 23h35", no padrão da agenda (#171) */
+const quando = (iso: string | null) => (iso ? instanteDaAgenda(iso) : '');
 
 /** Os Padeiros: lidos quando a pessoa é administradora (o número de pendentes vai na aba mesmo com ela fechada). */
 export function usePadeiros(pode: boolean) {

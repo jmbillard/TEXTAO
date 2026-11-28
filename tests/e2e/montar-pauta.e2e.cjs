@@ -344,6 +344,20 @@ async function montarPeloTeclado(navegador, url) {
   assert.deepEqual(await tardeDeNovo.locator('[data-campo="demanda"]').evaluateAll((els) => els.map((e) => e.value)), ['Mundo Animal 30/11 (P)']);
   assert.equal(await p.locator('.montar-aba[aria-current="page"]').getAttribute('data-estado'), 'rascunho');
 
+  // #171: a busca, a lupa das outras telas: a claquete que bate fica, as outras esmaecem; sem nenhuma, à mão
+  const lupa = p.getByRole('searchbox', { name: 'Buscar no dia' });
+  await p.keyboard.press('/');
+  await lupa.fill('mundo');
+  await p.locator('.montar-achadas', { hasText: '1 claquete com “mundo”' }).waitFor();
+  assert.equal(await p.locator('.montar-demanda.fora-da-busca').count(), 2, 'a Noite de Gala e o COMUNICAÇÃO esmaecem');
+  assert.equal(await tardeDeNovo.locator('.montar-demanda.fora-da-busca').count(), 0, 'o Mundo Animal fica');
+  await capturar(p, '03b-montar-busca');
+  await lupa.fill('zzzqqq');
+  await p.locator('.montar-achadas.nada-na-busca', { hasText: 'nada com “zzzqqq” neste dia' }).waitFor();
+  await lupa.press('Escape');
+  await p.locator('.montar-achadas').waitFor({ state: 'detached' });
+  assert.equal(await p.locator('.fora-da-busca').count(), 0, 'o Esc limpa a busca');
+
   // outro dia da semana continua vazio
   const outro = amanha === segunda ? mais(segunda, 1) : segunda;
   await p.locator('.montar-aba', { hasText: diaMes(outro) }).click();

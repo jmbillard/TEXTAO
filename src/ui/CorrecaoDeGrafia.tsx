@@ -23,6 +23,7 @@ import type {
 import { Icone } from "./icones";
 import { Marca } from "./pecas";
 import { CaixinhaDoDesfazer } from "./desfazer";
+import { diaDaAgenda, instanteDaAgenda } from "./util";
 import { useTelaDeCelular } from "./faixa";
 import "./configuracao.css";
 import "./correcoes.css";
@@ -46,36 +47,14 @@ interface Props {
   voltar: () => void;
 }
 
-/** "27/11/2026, sex" */
-const quando = (dia: string) => {
-  const d = new Date(`${dia}T12:00:00Z`);
-  return Number.isNaN(d.getTime())
-    ? dia
-    : d.toLocaleDateString("pt-BR", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        weekday: "short",
-        timeZone: "UTC",
-      });
-};
+/** "sex 27/11", o dia no padrão da agenda (#171) */
+const quando = diaDaAgenda;
 
 const plural = (n: number, um: string, varios: string) =>
   `${n.toLocaleString("pt-BR")} ${n === 1 ? um : varios}`;
 
-/** "27/11/2026 14:05" (no fuso de quem vê) */
-const quandoFoi = (iso: string) => {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? iso
-    : d.toLocaleString("pt-BR", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-};
+/** "sex 27/11 14h05", no fuso de quem vê, no padrão da agenda (#171) */
+const quandoFoi = instanteDaAgenda;
 
 /** A etiqueta curta do motivo de uma falha (o texto inteiro vai na dica). */
 const ETIQUETA: Record<string, string> = {

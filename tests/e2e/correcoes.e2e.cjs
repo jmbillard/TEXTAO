@@ -140,7 +140,8 @@ async function noComputador(navegador, url, teable, tema) {
   const corrigir = grupo(p, 'corrigir');
   assert.deepEqual(await textos(corrigir.locator('.cor-tabela tbody tr .cor-de-para')), ['Jogo Final 4/12 Dp → Jogo Final 4/12 (DP)', 'Festival 3/1 (MÊS) → Festival 3/1 (M)', 'Novela Sol 28/9 H → Novela Sol 28/9 (H)']);
   const jogo = corrigir.locator('.cor-tabela tbody tr').first();
-  assert.match(await jogo.locator('.cor-dia').textContent(), /27\/11\/2026/);
+  // #171: o dia no padrão da agenda ("sex 27/11"), sem o ponto nem o ano
+  assert.equal((await jogo.locator('.cor-dia').textContent()).trim(), 'sex 27/11');
   assert.equal((await jogo.locator('.cor-editor').textContent()).trim(), 'Bruno Teixeira');
   assert.deepEqual(await textos(jogo.locator('mark')), ['Dp', '(DP)']);
   assert.deepEqual(await textos(corrigir.locator('.cor-tabela tbody tr').last().locator('.cor-editor')), ['sem editor']);

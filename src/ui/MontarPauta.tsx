@@ -7,13 +7,15 @@ import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { acrescentarDemanda, escalarNa, lugarDaDemanda, moverDemanda, semEscala, tirarDemanda, type ClaqueteDistribuida } from '../modelo/distribuir';
 import type { DemandaParaDistribuir } from '../modelo/ausencias';
 import { useArrastar, type ItemArrastado, type LugarDeSoltar } from './arrastar';
-import { Alca, EscolherDestino, ParaDistribuir, SemEscala, type Arraste, type Destino } from './ColunaDaPauta';
+import { Alca, BuscaNoMontar, EscolherDestino, ParaDistribuir, SemEscala, batemNaBusca, useForaDaBusca, type Arraste, type Destino } from './ColunaDaPauta';
+import { BuscaNaLupa } from './BuscaNaLupa';
+import { semAcento } from '../modelo/vocabularios';
 import { diaEmSaoPaulo, diaVizinho } from '../modelo/pauta';
 import { CampoDaIlha } from './CampoDaIlha';
 import type { Ilha } from '../modelo/ilhas';
 import { Icone } from './icones';
 import { CaixinhaDoDesfazer } from './desfazer';
-import { Marca, RelativoAMao } from './pecas';
+import { Marca, NadaNaBusca, RelativoAMao } from './pecas';
 import { ConferirODia, DiaPublicado, FaixaDaPublicacao } from './ConferirPauta';
 import { AusenciasDoDia } from './AusenciasDaPauta';
 import { ColarDaPlanilha, type ColadoParaAplicar } from './ColarDaPlanilha';
@@ -116,6 +118,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
   const grade = useRef<HTMLDivElement>(null);
   // a tela: a grade, a conferência ou a pauta recém-publicada (#127)
   const [vista, setVista] = useState<'montar' | 'conferir' | 'publicada'>('montar');
+  const [busca, setBusca] = useState('');
   const [publicando, setPublicando] = useState(false);
   const [erroAoPublicar, setErroAoPublicar] = useState('');
   // a coluna lateral (#126): quem está fora (da caixa "Fora"), com o dia dessa leitura, e o erro da última ação dela
@@ -569,7 +572,11 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
 
   const atual = dados && (!dia || dados.dia === dia) ? dados : null;
   const rel = atual ? perto(atual.dia, hoje) : '';
+  // a busca (#171): a lupa das outras telas; as claquetes que não batem esmaecem
+  const termo = semAcento(busca.trim());
+  const nAchadas = termo && atual ? batemNaBusca(termo, [...posicoes.flatMap((p) => p.demandas.map((d) => d.texto)), ...listaDoDia.map((d) => d.texto)]) : 0;
   return (
+    <BuscaNoMontar.Provider value={termo}>
     <div className="pagina pauta montar-pauta">
       <header className="cad-topo">
         <button className="voltar-cad" onClick={voltar}>
@@ -634,6 +641,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
             <QuemMaisEsta outros={outros} />
           </div>
           <div className="montar-acoes">
+            {atual && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={vista === 'montar' && !colando} dica="Buscar claquete" rotulo="Buscar no dia" />}
             {atual && (
               <button type="button" className="botao" onClick={() => (setColado(''), setColando(true))}>
                 ⎘ Colar da planilha
@@ -647,6 +655,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
           </div>
         </div>
         {atual && <AbasDaSemana dados={atual} hoje={hoje} irPara={irPara} />}
+        {atual && !!termo && (nAchadas ? <p className="montar-achadas">{nAchadas === 1 ? '1 claquete' : `${nAchadas} claquetes`} com “{busca.trim()}”</p> : <NadaNaBusca termo={busca} onde="neste dia" className="montar-achadas" />)}
         {atual && <FaixaDaPublicacao dados={atual} desfazer={() => void desfazer()} />}
         {/* a semana lado a lado com a planilha (#133): as diferenças com a foto do mesmo dia */}
         {atual && <LadoALado dados={atual} posicoes={posicoes} foraNoDia={foraNoDia ?? []} />}
@@ -759,6 +768,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
         )}
       </main>
     </div>
+    </BuscaNoMontar.Provider>
   );
 }
 
@@ -998,9 +1008,10 @@ function LinhaDaDemanda({ posicao, id, texto, dia, motivo, mudar, tecla, arraste
   const l = lerDemanda(texto, dia);
   const preenchida = !!texto.trim();
   const indo = arraste.arrastado?.tipo === 'demanda' && arraste.arrastado.id === id;
+  const fora = useForaDaBusca(texto);
   return (
     <li
-      className={`montar-demanda t-${l.tipo}${preenchida ? ' arrastavel' : ''}${indo ? ' indo' : ''}${arraste.sobre === `demanda:${posicao}:${id}` ? ' sobre' : ''}${motivo ? ' distribuida' : ''}`}
+      className={`montar-demanda t-${l.tipo}${preenchida ? ' arrastavel' : ''}${indo ? ' indo' : ''}${arraste.sobre === `demanda:${posicao}:${id}` ? ' sobre' : ''}${motivo ? ' distribuida' : ''}${fora ? ' fora-da-busca' : ''}`}
       // a demanda que o Distribuir pôs (#151): o fundo levemente tingido e o motivo na dica
       title={motivo ? `Distribuída: ${motivo}` : undefined}
       data-solta={`demanda:${posicao}:${id}`}
