@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { barraNoTexto, CICLO_DOS_TIPOS, COMANDOS_DA_BARRA, comandosQueBatem, contagemDoTexto, duracaoLegivel, nomeDoArquivo, TIPOS_DO_TRECHO, tipoVizinho } from '../src/modelo/trecho';
+import { barraNoTexto, CICLO_DOS_TIPOS, COMANDOS_DA_BARRA, comandosQueBatem, ESCOLHAS_DO_COMENTARIO, SOBRE_O_TIPO, contagemDoTexto, duracaoLegivel, nomeDoArquivo, TIPOS_DO_TRECHO, tipoVizinho } from '../src/modelo/trecho';
 import type { NoJSON } from '../src/modelo/tipos';
 
 /* Escrever na folha (#190): o "/" e o menu que filtra, o Tab que troca o tipo, os números do rodapé e o nome curto da
@@ -31,9 +31,27 @@ describe('o menu do "/"', () => {
     expect(COMANDOS_DA_BARRA.map((c) => c.id)).toEqual(['locucao', 'arte', 'sonora', 'edicao', 'trilha', 'locutor', 'producao', 'locacao', 'comentario', 'timecode', 'arquivo', 'texto']);
   });
 
-  it('todo tipo do trecho tem o seu comando', () => {
-    const comTipo = COMANDOS_DA_BARRA.flatMap((c) => (c.tipo ? [c.tipo] : []));
-    expect([...comTipo].sort()).toEqual([...TIPOS_DO_TRECHO].sort());
+  it('todo tipo do trecho tem o seu comando (o recado para a arte, na escolha do /comentario)', () => {
+    const comTipo = [...COMANDOS_DA_BARRA, ...ESCOLHAS_DO_COMENTARIO].flatMap((c) => (c.tipo ? [c.tipo] : []));
+    expect([...new Set(comTipo)].sort()).toEqual([...TIPOS_DO_TRECHO].sort());
+  });
+
+  it('o /comentario não troca o tipo: pergunta qual dos dois, o recado (para a edição, a produção ou a arte) ou o comentário', () => {
+    const c = COMANDOS_DA_BARRA.find((x) => x.id === 'comentario')!;
+    expect(c.tipo).toBeUndefined();
+    expect(c.nome).toBe('Recado ou comentário');
+    expect(ESCOLHAS_DO_COMENTARIO.map((e) => [e.id, e.tipo ?? null])).toEqual([
+      ['recado-edicao', 'edicao'],
+      ['recado-producao', 'producao'],
+      ['recado-arte', 'comentario'],
+      ['comentario', null],
+    ]);
+    expect(ESCOLHAS_DO_COMENTARIO.map((e) => e.nome)).toEqual(['edição', 'produção', 'arte', 'Comentário sobre o texto']);
+    // o tipo "comentario" de antes (e o dos roteiros de fora) é o recado para a arte
+    expect(SOBRE_O_TIPO.comentario).toMatchObject({ nome: 'Recado para a arte', rotulo: 'RECADO' });
+    // "/recado" também chega a ele
+    expect(comandosQueBatem('recado').map((x) => x.id)).toEqual(['comentario']);
+    expect(comandosQueBatem('coment').map((x) => x.id)).toEqual(['comentario']);
   });
 
   it('filtra pelo começo do comando e pelo nome, sem caixa e sem acento; o que começa vem antes', () => {

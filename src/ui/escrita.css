@@ -103,6 +103,10 @@
 .escrita-barra { max-width: 1320px; }
 .escrita { max-width: 1320px; display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; align-items: start; }
 .escrita-lado { position: sticky; top: 16px; min-width: 0; display: flex; flex-direction: column; gap: 14px; animation: entrar-suave 0.4s 0.2s var(--suave) both; }
+/* a lista das artes recolhida (`ArtesQueRecolhem`): a coluna encolhe até a pílula e a folha ganha o espaço, no mesmo
+   tempo da dobra */
+.escrita { transition: grid-template-columns 0.36s var(--suave); }
+@media (min-width: 1181px) { .escrita:has(.artes-que-recolhem[data-recolhida]) { grid-template-columns: minmax(0, 1fr) 132px; } }
 @media (max-width: 1180px) {
   .escrita, .escrita-barra { max-width: 980px; }
   .escrita { grid-template-columns: minmax(0, 1fr); }
@@ -110,13 +114,13 @@
 }
 
 /* a cor de cada tipo: o rótulo da margem, o selo dos menus e o texto do trecho */
-:where(.folha-escrita, .menu-do-tipo, .menu-da-barra) [data-tipo] { --c: var(--tinta3); }
-:where(.folha-escrita, .menu-do-tipo, .menu-da-barra) :is([data-tipo='locucao'], [data-tipo='sonora'], [data-tipo='locacao']) { --c: var(--tinta2); }
-:where(.folha-escrita, .menu-do-tipo, .menu-da-barra) [data-tipo='arte'] { --c: var(--ultra); }
-:where(.folha-escrita, .menu-do-tipo, .menu-da-barra) [data-tipo='edicao'] { --c: var(--edicao); }
-:where(.folha-escrita, .menu-do-tipo, .menu-da-barra) [data-tipo='trilha'] { --c: var(--sonoplastia); }
-:where(.folha-escrita, .menu-do-tipo, .menu-da-barra) [data-tipo='locutor'] { --c: var(--locutor); }
-:where(.folha-escrita, .menu-do-tipo, .menu-da-barra) [data-tipo='producao'] { --c: var(--producao); }
+:where(.folha-escrita, .menu-do-tipo, .menu-da-barra, .barra-do-polegar) [data-tipo] { --c: var(--tinta3); }
+:where(.folha-escrita, .menu-do-tipo, .menu-da-barra, .barra-do-polegar) :is([data-tipo='locucao'], [data-tipo='sonora'], [data-tipo='locacao']) { --c: var(--tinta2); }
+:where(.folha-escrita, .menu-do-tipo, .menu-da-barra, .barra-do-polegar) [data-tipo='arte'] { --c: var(--ultra); }
+:where(.folha-escrita, .menu-do-tipo, .menu-da-barra, .barra-do-polegar) [data-tipo='edicao'] { --c: var(--edicao); }
+:where(.folha-escrita, .menu-do-tipo, .menu-da-barra, .barra-do-polegar) [data-tipo='trilha'] { --c: var(--sonoplastia); }
+:where(.folha-escrita, .menu-do-tipo, .menu-da-barra, .barra-do-polegar) [data-tipo='locutor'] { --c: var(--locutor); }
+:where(.folha-escrita, .menu-do-tipo, .menu-da-barra, .barra-do-polegar) [data-tipo='producao'] { --c: var(--producao); }
 
 /* a margem dos tipos: o rótulo de cada trecho, alinhado à primeira linha dele; o palpite leva o "?" e o contorno fino */
 .folha-escrita-corpo { position: relative; }
@@ -220,6 +224,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .escrita-lado, .tipo-na-margem, .tipo-na-margem-nome, .texto-escrita .ficha-do-texto { animation: none; }
+  .escrita { transition: none; }
   .tipo-na-margem, .folha-escrita .texto-escrita p { transition: none; }
 }
 @media (max-width: 600px) {
@@ -342,9 +347,103 @@ body:has(.pagina-escrita.limpo) :is(.botao-atalhos, .rodape-da-escrita) { displa
   .folha-escrita:not(.limpo) .texto-escrita[data-visao='colunas'] > p[data-tipo='locacao']::after { display: block; }
   .texto-escrita[data-visao='colunas'] > p.abre { border-top: 0; }
   .texto-escrita[data-visao='colunas'] > p { box-shadow: none; }
+  /* cada grupo vira uma linha empilhada (#198): o vídeo em cima, o áudio embaixo, cada um com o nome da coluna; o fio
+     fino abre o grupo, e o tracejado separa o vídeo do áudio dele */
+  .folha-escrita:not(.limpo) .texto-escrita[data-visao='colunas'] > p.abre:is([data-coluna='video'], [data-coluna='audio']) { margin-top: 10px; padding-top: 30px; border-top: 1px solid var(--regua); }
+  .folha-escrita:not(.limpo) .texto-escrita[data-visao='colunas'] > p[data-coluna='video'] + p.abre[data-coluna='audio'] { margin-top: 0; border-top: 1px dashed var(--regua); }
+  .folha-escrita:not(.limpo) .texto-escrita[data-visao='colunas'] > p.abre:first-child { margin-top: 0; border-top: 0; padding-top: 22px; }
+  .folha-escrita:not(.limpo) .texto-escrita[data-visao='colunas'] > p.abre:is([data-coluna='video'], [data-coluna='audio'])::after {
+    position: absolute; left: 0; top: 10px; pointer-events: none;
+    font: 600 10px/1 var(--sans); font-style: normal; letter-spacing: 0.14em; text-transform: uppercase; color: var(--tinta3);
+    animation: entrar-suave 0.3s var(--suave) both;
+  }
+  .folha-escrita:not(.limpo) .texto-escrita[data-visao='colunas'] > p.abre[data-coluna='video']::after { content: 'Vídeo'; }
+  .folha-escrita:not(.limpo) .texto-escrita[data-visao='colunas'] > p.abre[data-coluna='audio']::after { content: 'Áudio'; }
+  .folha-escrita:not(.limpo) .texto-escrita[data-visao='colunas'] > p.abre:first-child::after { top: 2px; }
   .texto-escrita .celula-vazia, .cabeca-das-colunas { display: none; }
   .folha-escrita-corpo:has(.texto-escrita[data-visao='colunas']) .margem-dos-tipos { display: none; }
   .folha-escrita.limpo { padding: 40px 18px 60px; }
   .pagina-escrita.limpo .escrita { padding-top: 60px; }
   .sair-do-limpo { top: 10px; right: 10px; }
+}
+
+/* ================= escrever no celular (#198) ================= */
+
+/* a barra do polegar: no pé da tela, logo acima do rodapé dos números; com o teclado aberto, logo acima dele (o
+   `bottom` vem de useTecladoNaTela) e o rodapé sai. Os alvos de toque têm 44 px. */
+.barra-do-polegar {
+  position: fixed; left: 0; right: 0; bottom: calc(34px + env(safe-area-inset-bottom, 0px)); z-index: 35;
+  display: flex; align-items: center; gap: 6px; min-height: 56px; padding: 6px max(8px, env(safe-area-inset-right, 0px)) 6px max(8px, env(safe-area-inset-left, 0px));
+  background: color-mix(in srgb, var(--cartao) 94%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-top: 1px solid var(--regua); box-shadow: 0 -6px 18px rgb(26 25 22 / 6%); font-family: var(--sans);
+  animation: polegar-sobe 0.32s var(--suave) both; transition: bottom 0.2s var(--suave);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .barra-do-polegar { box-shadow: 0 -6px 18px rgb(0 0 0 / 28%); } }
+:root[data-theme='dark'] .barra-do-polegar { box-shadow: 0 -6px 18px rgb(0 0 0 / 28%); }
+:root[data-teclado] .rodape-da-escrita { display: none; }
+@keyframes polegar-sobe { from { opacity: 0; transform: translateY(100%); } }
+
+/* os tipos: só esta faixa rola para o lado (com as pontas esmaecidas), nunca a página */
+.polegar-tipos {
+  flex: 1; min-width: 0; display: flex; gap: 2px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-snap-type: x proximity;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(90deg, transparent 0, #000 10px, #000 calc(100% - 16px), transparent);
+  padding: 0 8px 0 4px;
+}
+.polegar-tipos::-webkit-scrollbar { display: none; }
+.polegar-tipo {
+  flex: none; min-width: 44px; height: 44px; padding: 0 10px; border: 0; border-radius: 10px; background: none; cursor: pointer;
+  color: var(--c); font: 600 11px/1 var(--mono); letter-spacing: 0.06em; white-space: nowrap; opacity: 0.68; scroll-snap-align: center;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  transition: background var(--rapido) var(--suave), opacity var(--rapido) var(--suave), transform var(--rapido) var(--suave), box-shadow var(--rapido) var(--suave);
+}
+.polegar-tipo[aria-pressed='true'] { opacity: 1; background: color-mix(in srgb, var(--c) 14%, transparent); }
+/* o palpite: o contorno fino e o "?", como na margem */
+.polegar-tipo.palpite { background: none; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 45%, transparent); }
+.polegar-tipo i { font-style: normal; margin-left: 1px; color: var(--ultra); }
+.polegar-tipo:active:not(:disabled) { transform: scale(0.94); }
+.polegar-tipo:disabled { opacity: 0.3; cursor: default; }
+.polegar-tipo:focus-visible, .polegar-acao:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
+
+/* o "/", a Arte e o Enviar, à direita, depois do fio */
+.polegar-acoes { flex: none; display: flex; align-items: center; gap: 4px; position: relative; padding-left: 7px; }
+.polegar-acoes::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 1px; background: var(--regua); }
+.polegar-acao {
+  min-width: 44px; height: 44px; padding: 0 11px; border: 0; border-radius: 10px; background: var(--neutro); color: var(--tinta); cursor: pointer;
+  font: 600 14px var(--sans); -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  transition: background var(--rapido) var(--suave), transform var(--rapido) var(--suave), opacity var(--rapido) var(--suave);
+}
+.polegar-acao:active:not(:disabled) { transform: scale(0.94); }
+.polegar-acao:disabled { opacity: 0.4; cursor: default; }
+.polegar-barra code { font: 600 19px/1 var(--mono); color: var(--ultra); }
+.polegar-arte { color: var(--ultra); }
+.polegar-arte[aria-pressed='true'] { background: var(--ultra-suave); }
+.polegar-enviar { display: inline-grid; place-items: center; min-width: 48px; height: 44px; padding: 0 12px; border-radius: 10px; }
+
+/* com um trecho selecionado, o Comentar no lugar dos tipos; quem só lê tem só ele */
+.polegar-comentar { flex: 1; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 44px; border-radius: 10px; font-size: 14px; animation: entrar-suave 0.25s var(--suave) both; }
+.barra-do-polegar.so-comentar .polegar-comentar { flex: none; padding: 0 18px; }
+.polegar-dica { flex: 1; min-width: 0; padding-left: 8px; font-size: 13px; color: var(--tinta3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+@media (prefers-reduced-motion: reduce) {
+  .barra-do-polegar, .polegar-comentar { animation: none; }
+  .barra-do-polegar, .polegar-tipo, .polegar-acao { transition: none; }
+  .folha-escrita .texto-escrita[data-visao='colunas'] > p::after { animation: none; }
+}
+@media (min-width: 601px) { .barra-do-polegar { display: none; } }
+
+@media (max-width: 600px) {
+  /* a página guarda o lugar da barra no pé; o Enviar de cima desce para ela */
+  .pagina-escrita.com-polegar .escrita { padding-bottom: 150px; }
+  .pagina-escrita.com-polegar .escrita-barra .escrita-enviar { display: none; }
+  /* o menu do "/" abre para cima quando embaixo vem a barra, e cabe na parte da tela que o teclado deixa */
+  .menu-da-barra { max-height: min(380px, calc(var(--altura-visivel, 100vh) * 0.45)); }
+  .menu-da-barra.acima { translate: 0 -100%; }
+  .menu-da-barra .menu-item { min-height: 44px; }
+  /* os alvos de toque de 44 px no topo da folha */
+  .escrita-barra :is(.escrita-voltar, .escrita-comentar, .visibilidade, .escrita-visivel) { min-height: 44px; }
+  .escrita-barra .visibilidade { min-width: 44px; justify-content: center; }
+  .escrita-comentar { min-width: 44px; justify-content: center; }
+  .escrita-ver .segmento button { height: 44px; min-width: 44px; }
+  .escrita-ver :is(.escrita-ver-limpo, .escrita-ver-docx) { min-height: 44px; }
+  .comecar-na-folha .comecar-abrir { min-height: 44px; }
 }

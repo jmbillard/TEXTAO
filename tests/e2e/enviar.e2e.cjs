@@ -196,10 +196,11 @@ async function noCelular(navegador, url, id) {
   for (const tema of ['light', 'dark']) {
     const { ctx, p, erros } = await entrar(navegador, url, `#/roteiros/${id}`, MARINA, { ...devices['iPhone 13'], colorScheme: tema });
     await p.waitForSelector('.folha-escrita .texto-escrita p');
-    await p.waitForSelector('.escrita-enviar:not([disabled])');
+    // no celular, o Enviar fica na barra do polegar (#198)
+    await p.waitForSelector('.barra-do-polegar .polegar-enviar:not([disabled])');
     await semRolagemDeLado(p, `a folha enviada no celular (${tema})`);
     await capturar(p, `08-folha-celular-${tema}`);
-    await p.click('.escrita-enviar');
+    await p.click('.barra-do-polegar .polegar-enviar');
     await p.waitForSelector('.card-aberto .enviar');
     await semRolagemDeLado(p, `o painel do Enviar no celular (${tema})`);
     const largura = await p.locator('.card-aberto').evaluate((e) => e.getBoundingClientRect().width);

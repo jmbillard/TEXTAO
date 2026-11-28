@@ -50,19 +50,29 @@ _Evitar_: lugar, cena
 
 **Tipo do trecho**:
 O que cada trecho (parágrafo) do Roteiro é: locução, sonora, trilha, para o locutor, arte, edição, produção, locação,
-comentário ou texto (sem tipo). Fica guardado no trecho, com o **palpite** pelo texto (caixa alta é locução, "Nome, de
+recado para a arte (o tipo `comentario`) ou texto (sem tipo). Fica guardado no trecho, com o **palpite** pelo texto (caixa alta é locução, "Nome, de
 onde:" é sonora, "TRILHA/BG" é trilha) marcado como não confirmado, com "?", até a pessoa confirmar ou trocar. O
 Roteiro que chega de fora não guarda tipo: vale a arte ou a etiqueta que cobre o trecho inteiro e, sem elas, o palpite.
-Nas colunas, cada tipo tem a sua: vídeo (arte, edição, produção, comentário), áudio (locução, sonora, trilha, para o
+Nas colunas, cada tipo tem a sua: vídeo (arte, edição, produção, recado), áudio (locução, sonora, trilha, para o
 locutor, texto) e a locação na linha inteira.
 _Evitar_: estilo, formato, bloco
+
+**Recado** (no Roteiro):
+Um aviso dentro do texto do Roteiro para a edição, a produção ou a arte. Não é lido (fica fora da locução e do tempo) e
+vai junto no **Enviar**: a fila recebe o recado como a etiqueta da revisão, a mesma dos roteiros que chegam de fora. O
+recado para a edição é o trecho de edição, e o recado para a produção, o trecho de produção (as orientações que elas já
+leem); o recado para a arte é o tipo de trecho `comentario`, que na revisão é a etiqueta "recado" (Ctrl+Shift+M). Na
+folha, o `/comentario` pergunta qual: "Recado para… edição / produção / arte" ou "Comentário sobre o texto" (o
+**Comentário**). Decidido pelo usuário em 28/11/2026.
+_Evitar_: nota, observação, comentário (o comentário é a conversa)
 
 **Comentário** (no Roteiro escrito):
 A conversa presa a um trecho do Roteiro escrito no PROMeiro: o comentário, as respostas e o resolver (que se desfaz).
 Toda pessoa que lê o roteiro comenta, também quem só lê o texto. Fica fora do texto e acha o trecho pelo que ele diz
 (a âncora), mesmo com o texto reescrito em volta. O **@nome** chama alguém dos cadastros, e quem foi chamado (e o redator,
 quando comentam no roteiro dele) ganha o **aviso**, a bolinha laranja em "Roteiros" e no comentário, que some quando a
-pessoa vê. Não é o tipo de trecho "comentário" do roteiro que chega de fora, que continua sendo texto do roteiro.
+pessoa vê. Não vai no **Enviar**. Não é o **recado** (o aviso dentro do texto, que vai), nem a etiqueta de recado do
+roteiro que chega de fora.
 _Evitar_: nota, observação, anotação
 
 **Referência**:

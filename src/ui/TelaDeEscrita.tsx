@@ -4,7 +4,7 @@ import { EditorContent, useEditor } from '@tiptap/react';
 import History from '@tiptap/extension-history';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
-import { armazenamento, guardarOriginal, type Leitura } from '../dados/armazenamento';
+import { armazenamento, guardarOriginal, lerUltimoEnvio, type Leitura, type UltimoEnvio } from '../dados/armazenamento';
 import { abrirSala, corDe } from '../dados/colaboracao';
 import { extensoesDoRoteiro, prepararColagem, Teclado } from '../editor/extensoes';
 import { Escrita, type PonteDaEscrita } from '../editor/escrita';
@@ -17,10 +17,11 @@ import { casoDaLeitura, LinkQuebrado } from './LinkQuebrado';
 import { Compartilhar, type Convite } from './Compartilhar';
 import { ComentariosDaFolha } from './ComentariosDaFolha';
 import { ComentariosNoTexto } from '../editor/comentarios';
-import { ArtesDaEscrita, EscritaNaFolha, RodapeDaEscrita } from './EscritaNaFolha';
+import { ArtesDaEscrita, BarraDoPolegar, EscritaNaFolha, RodapeDaEscrita } from './EscritaNaFolha';
+import { useTelaDeCelular } from './faixa';
 import { BolinhaDeEstado } from './pecas';
 import { Icone } from './icones';
-import { atalho, ATALHO_DE_COMENTAR, baixar, nomeDoArquivo, plural, quandoComecou, semMovimento } from './util';
+import { atalho, ATALHO_DE_COMENTAR, baixar, dataPorExtenso, nomeDoArquivo, plural, quandoComecou, semMovimento } from './util';
 import { Presentes } from './Filmes';
 import { useSalaDaEscrita } from './salaDaEscrita';
 import { EnviosDaEscrita, PainelDoEnviar } from './EnviarDaEscrita';
@@ -46,7 +47,16 @@ import './escrita.css';
    cada trecho ganha o lugar dele por decoração (`editor/colunas.ts`), e a troca anda numa animação FLIP. O modo limpo
    (o botão e Ctrl+Shift+L, numa transição) esconde tudo menos a folha e mostra a cara dos .docx de hoje; o "/" e os
    atalhos continuam, porque o editor é o mesmo. Em colunas, o limpo vira a tabela de bordas pretas. O .docx baixado
-   sai igual ao limpo da visão de agora (`gerarDocx` com `limpo`). */
+   sai igual ao limpo da visão de agora (`gerarDocx` com `limpo`).
+
+   No celular (#198), a margem dos tipos dá lugar à barra do polegar (`BarraDoPolegar`), no pé da tela e acima do
+   teclado: os tipos, o "/", a Arte e o Enviar (o painel do #194, em tela cheia); com um trecho selecionado, o Comentar
+   (a folha de baixo do #192). Quem só lê tem só o Comentar. As colunas viram as linhas empilhadas, vídeo e áudio.
+
+   O envio (#197): a edição abre o roteiro pela Pauta no último Enviar (`envio`), a versão que vale, e não o texto vivo.
+   É a mesma folha, só de leitura, sem a sala, e já nas colunas (a visão inicial das `Colunas`): os timecodes e os
+   arquivos abrem o balão com o copiar, como na escrita, e o comentário vai para o roteiro escrito, sobre o texto que a
+   pessoa vê. Fechado pela redatora, o envio ainda abre (ele está na fila), sem os comentários. */
 
 /** Quanto a folha espera depois da última tecla para salvar. */
 const SALVAR_MS = 600;
@@ -63,21 +73,43 @@ interface Props {
   topo: ReactNode;
   /** o Enviar (#194): o caminho da fila (App), com a claquete conferida no painel */
   enviar?: EnviarDaFolha;
+  /** o último envio, em leitura e nas colunas (#197): o roteiro aberto pela Pauta */
+  envio?: boolean;
+  /** no envio, o caminho para o texto de agora (para quem escreve no roteiro) */
+  abrirOEscrito?: (id: string) => void;
+}
+
+/** O último envio lido como a leitura da folha: o 404 (nunca enviado, de fora, não existe) é o link que não existe. */
+async function lerOEnvio(id: string): Promise<{ leitura: Leitura; envio?: UltimoEnvio }> {
+  try {
+    const envio = await lerUltimoEnvio(id);
+    return { leitura: { estado: 'ok', roteiro: envio.roteiro }, envio };
+  } catch (e) {
+    const status = (e as { status?: number }).status;
+    return { leitura: status === 404 || status === 400 ? { estado: 'nao-existe' } : { estado: 'erro', mensagem: (e as Error).message } };
+  }
 }
 /** O Enviar da folha (#194): o roteiro como está, a claquete conferida, o motivo e, no reenvio, a resposta da liberação. */
 export type EnviarDaFolha = (escrito: Roteiro, conferida: ClaqueteConferida, opcoes: { motivo: string; liberada?: boolean; jaEnviado: boolean }) => Promise<EnvioFeito>;
 
-export function TelaDeEscrita({ id, voltar, abrirNaRevisao, avisar, pessoa, topo, enviar }: Props) {
+export function TelaDeEscrita({ id, voltar, abrirNaRevisao, avisar, pessoa, topo, enviar, envio, abrirOEscrito }: Props) {
   const [leitura, setLeitura] = useState<Leitura | undefined>(undefined);
+  const [ultimo, setUltimo] = useState<UltimoEnvio | undefined>(undefined);
   const [tentativa, setTentativa] = useState(0);
   useEffect(() => {
     let vivo = true;
-    void armazenamento.ler(id).then((l) => vivo && setLeitura(l));
+    if (envio)
+      void lerOEnvio(id).then((l) => {
+        if (!vivo) return;
+        setUltimo(l.envio);
+        setLeitura(l.leitura);
+      });
+    else void armazenamento.ler(id).then((l) => vivo && setLeitura(l));
     return () => {
       vivo = false;
     };
-  }, [id, tentativa]);
-  const deFora = leitura?.estado === 'ok' && !leitura.roteiro.escrito;
+  }, [id, tentativa, envio]);
+  const deFora = !envio && leitura?.estado === 'ok' && !leitura.roteiro.escrito;
   useEffect(() => {
     if (deFora) abrirNaRevisao(id);
   }, [deFora, id, abrirNaRevisao]);
@@ -90,16 +122,27 @@ export function TelaDeEscrita({ id, voltar, abrirNaRevisao, avisar, pessoa, topo
         <LinkQuebrado caso={casoDaLeitura(leitura)} voltar={voltar} tentar={() => setTentativa((n) => n + 1)} />
       </div>
     );
-  return <Folha key={leitura.roteiro.id} inicial={leitura.roteiro} voltar={voltar} avisar={avisar} pessoa={pessoa} topo={topo} enviar={enviar} />;
+  return <Folha key={leitura.roteiro.id} inicial={leitura.roteiro} voltar={voltar} avisar={avisar} pessoa={pessoa} topo={topo} enviar={envio ? undefined : enviar} envio={ultimo} abrirOEscrito={abrirOEscrito} />;
 }
+
+/** "o 2º envio, V2, de 24 de novembro às 14:20, por Rita": o que a faixa do envio diz. */
+const sobreOEnvio = (e: UltimoEnvio['envio']) => {
+  const marca = marcaDaLetraEVersao(e);
+  const hora = new Date(e.em).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const dia = new Date(e.em).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+  return { marca, quando: `${dataPorExtenso(dia)} às ${hora}` };
+};
 
 /** O que a folha salva agora. */
 type Salvamento = 'salvo' | 'salvando' | 'erro';
 
-function Folha({ inicial, voltar, avisar, pessoa, topo, enviar }: { inicial: Roteiro; voltar: () => void; avisar: (t: string) => void; pessoa?: Pessoa; topo: ReactNode; enviar?: EnviarDaFolha }) {
-  const meu = inicial.meu !== false;
-  // a regra é do servidor (regraDoEscrito): o autor, o convidado que escreve, a coordenação e o administrador
-  const escreve = meu || !!inicial.podeEditar;
+function Folha({ inicial, voltar, avisar, pessoa, topo, enviar, envio, abrirOEscrito }: { inicial: Roteiro; voltar: () => void; avisar: (t: string) => void; pessoa?: Pessoa; topo: ReactNode; enviar?: EnviarDaFolha; envio?: UltimoEnvio; abrirOEscrito?: (id: string) => void }) {
+  const meu = !envio && inicial.meu !== false;
+  // a regra é do servidor (regraDoEscrito): o autor, o convidado que escreve, a coordenação e o administrador; o envio
+  // lido pela Pauta (#197) é só de leitura, para todos
+  const escreve = !envio && (meu || !!inicial.podeEditar);
+  // os comentários são do roteiro escrito: o envio do roteiro fechado abre sem eles
+  const comenta = !envio || envio.comenta;
   const [meta, setMeta] = useState<Meta>(() => ({ ...metaVazia(), ...inicial.meta }));
   const [publico, setPublico] = useState(!!inicial.publico);
   const [pessoas, setPessoas] = useState<Convite[]>(inicial.compartilhadoCom ?? []);
@@ -115,7 +158,11 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar }: { inicial: Rot
   const titulo = useRef<HTMLTextAreaElement>(null);
   // os comentários (#192): o pedido do botão Comentar e quantos estão abertos
   const [pedidoDeComentario, setPedidoDeComentario] = useState(0);
+  /** comentar o trecho selecionado (#192): o botão Comentar, o Ctrl+Alt+M e o "Comentário sobre o texto" do /comentario */
+  const comentarOTexto = useCallback(() => setPedidoDeComentario((n) => n + 1), []);
   const [abertos, setAbertos] = useState(0);
+  // as sugestões da revisão (#196) que esperam a decisão: o Enviar diz que elas não vão
+  const [sugestoes, setSugestoes] = useState(0);
   // a escrita (#190): a ponte entre o teclado do editor e a tela (o menu do "/", os balões), e a arte com o balão aberto
   const ponte = useRef<PonteDaEscrita>({});
   // o Ctrl+Enter do Enviar (#194), à parte da ponte que a margem preenche
@@ -123,15 +170,20 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar }: { inicial: Rot
   const [arteAberta, setArteAberta] = useState<string | null>(null);
   // a sala ao vivo (#191): só existe com o servidor; o exemplo do tour não chega aqui (ele não é escrito no PROMeiro)
   // quem só lê o roteiro que nunca teve sala (o salvo antes do #191) lê o texto guardado, sem esperar quem escreve (#194)
-  const [sala] = useState(() => (armazenamento.tipo === 'servidor' && !inicial.semSala ? abrirSala(inicial.id) : null));
+  const [sala] = useState(() => (armazenamento.tipo === 'servidor' && !inicial.semSala && !envio ? abrirSala(inicial.id) : null));
   // o Enviar (#194): o estado do escrito, o último envio, o painel aberto (e o botão de onde ele cresce)
   const [estadoDoEscrito, setEstadoDoEscrito] = useState(inicial.escrito ?? 'sendo-escrito');
   const [ultimoEnvio, setUltimoEnvio] = useState<EnvioDoEscrito | null>(null);
   const [vezDosEnvios, setVezDosEnvios] = useState(0);
   const [enviando, setEnviando] = useState<Roteiro | null>(null);
   const botaoEnviar = useRef<HTMLButtonElement>(null);
+  // de onde o painel cresce: o botão da barra de cima ou o da barra do polegar, no celular (#198)
+  const origemDoEnviar = useRef<HTMLElement | null>(null);
+  const celular = useTelaDeCelular();
   // ver (#193): a visão (texto ou colunas) e o modo limpo são de cada um, não do roteiro
-  const [visao, setVisao] = useState<Visao>('texto');
+  // o envio pela Pauta (#197) abre nas colunas
+  const visaoInicial: Visao = envio ? 'colunas' : 'texto';
+  const [visao, setVisao] = useState<Visao>(visaoInicial);
   const [limpo, setLimpo] = useState(false);
 
   const editor = useEditor({
@@ -140,7 +192,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar }: { inicial: Rot
       // o teclado da escrita (#190) vem antes do da revisão: o "/", o Tab nos tipos, o Ctrl+U no trecho, as fichas
       Escrita.configure({ ponte: () => ({ ...ponte.current, enviar: enviarPelaTecla.current }), programa: () => estado.current.meta.programa }),
       // as colunas (#193): o lugar de cada trecho na grade vídeo | áudio, só decoração sobre o mesmo documento
-      Colunas,
+      Colunas.configure({ inicial: visaoInicial }),
       Teclado.configure({ programa: () => estado.current.meta.programa }),
       // colar do Word no meio do texto (#195): linha a linha, com a arte inteira já do tipo arte
       ColagemNaEscrita,
@@ -219,9 +271,14 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar }: { inicial: Rot
 
   // o Enviar (#194): o botão e o Ctrl+Enter abrem o painel com o roteiro como está agora
   const podeEnviar = escreve && !!enviar && armazenamento.tipo === 'servidor';
-  const abrirEnviar = useCallback(() => {
-    if (podeEnviar && liberado) setEnviando(roteiroAtual());
-  }, [podeEnviar, liberado, roteiroAtual]);
+  const abrirEnviar = useCallback(
+    (origem?: HTMLElement | null) => {
+      if (!podeEnviar || !liberado) return;
+      origemDoEnviar.current = origem ?? botaoEnviar.current;
+      setEnviando(roteiroAtual());
+    },
+    [podeEnviar, liberado, roteiroAtual],
+  );
   // no texto, a tecla chega pela ponte da escrita (antes da quebra de linha do editor); fora dele, pela janela
   enviarPelaTecla.current = podeEnviar && !enviando ? () => (abrirEnviar(), true) : undefined;
   useEffect(() => {
@@ -348,7 +405,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar }: { inicial: Rot
   const visibilidade = publico ? 'Visível para a equipe' : pessoas.length ? `Fechado · ${pessoas.length === 1 ? '1 convidado' : `${pessoas.length} convidados`}` : 'Fechado';
 
   return (
-    <div className={`pagina pagina-escrita${limpo ? ' limpo' : ''}`} data-visao={visao}>
+    <div className={`pagina pagina-escrita${limpo ? ' limpo' : ''}${celular && !limpo && (escreve || comenta) ? ' com-polegar' : ''}`} data-visao={visao}>
       {/* no limpo, só a folha: o topo, a barra, as artes e o rodapé saem; fica o caminho de volta */}
       {limpo && (
         <div className="sair-do-limpo" role="toolbar" aria-label="Modo limpo">
@@ -363,7 +420,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar }: { inicial: Rot
       {topo}
       <div className="escrita-barra" role="toolbar" aria-label="O roteiro">
         <button type="button" className="botao-texto escrita-voltar" onClick={voltar}>
-          <Icone nome="voltar" tam={14} traco={2} /> Roteiros
+          <Icone nome="voltar" tam={14} traco={2} /> {envio ? 'Pauta' : 'Roteiros'}
         </button>
         {escreve ? (
           <span className="escrita-salvo" data-salvamento={marca} role="status" aria-live="polite" title={marca === 'salvo' ? 'O roteiro está salvo' : gravacao === 'sem-conexao' ? 'Sem conexão: o que você escreveu vai quando ela voltar' : undefined}>
@@ -375,24 +432,32 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar }: { inicial: Rot
         )}
         <span className="espaco" />
         {/* #192: comentar o trecho selecionado (também Ctrl+Alt+M), para toda pessoa que lê o roteiro */}
-        <button
-          type="button"
-          className="botao escrita-comentar"
-          title={`Comentar o trecho selecionado (${ATALHO_DE_COMENTAR})`}
-          aria-keyshortcuts="Control+Alt+M"
-          // o clique não tira a seleção do texto
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => setPedidoDeComentario((n) => n + 1)}
-        >
-          <Icone nome="comentario" tam={14} traco={2} />
-          <span className="escrita-comentar-nome">Comentar</span>
-          {abertos > 0 && <span className="escrita-comentar-conta" aria-label={`${abertos} abertos`}>{abertos}</span>}
-        </button>
+        {comenta && (
+          <button
+            type="button"
+            className="botao escrita-comentar"
+            title={`Comentar o trecho selecionado (${ATALHO_DE_COMENTAR})`}
+            aria-keyshortcuts="Control+Alt+M"
+            // o clique não tira a seleção do texto
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={comentarOTexto}
+          >
+            <Icone nome="comentario" tam={14} traco={2} />
+            <span className="escrita-comentar-nome">Comentar</span>
+            {abertos > 0 && <span className="escrita-comentar-conta" aria-label={`${abertos} abertos`}>{abertos}</span>}
+          </button>
+        )}
         {/* quem mais está no roteiro agora (#191): as bolinhas da mesma peça da prévia, com as iniciais na cor de cada um */}
         <span className="escrita-presentes" aria-live="polite">
           <Presentes pessoas={presentes} texto />
         </span>
-        {meu ? (
+        {/* no envio (#197), o caminho para o texto de agora, para quem escreve no roteiro */}
+        {envio?.escreve && abrirOEscrito && (
+          <button type="button" className="botao-texto escrita-ao-vivo" onClick={() => abrirOEscrito(inicial.id)} title="Abre o roteiro como está agora, para escrever">
+            <Icone nome="lapis" tam={14} traco={2} /> <span className="escrita-ao-vivo-nome">O texto de agora</span>
+          </button>
+        )}
+        {envio ? null : meu ? (
           <span className="compartilhar escrita-visibilidade" ref={caixaDoPainel}>
             <button type="button" className={`visibilidade ${publico ? 'publico' : ''}`} aria-haspopup="dialog" aria-expanded={compartilhando} onClick={() => setCompartilhando((v) => !v)}>
               <Icone nome={publico ? 'olho' : 'cadeado'} tam={14} traco={2} />
@@ -407,13 +472,22 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar }: { inicial: Rot
         )}
         {/* #194: o Enviar (e o Ctrl+Enter), na ponta */}
         {podeEnviar && (
-          <button type="button" ref={botaoEnviar} className="botao primario escrita-enviar" disabled={!liberado} aria-keyshortcuts="Control+Enter" title={`${estadoDoEscrito === 'enviado' ? 'Enviar a versão nova' : 'Enviar para a fila'} (${atalho('Mod-Enter')})`} onClick={abrirEnviar}>
+          <button type="button" ref={botaoEnviar} className="botao primario escrita-enviar" disabled={!liberado} aria-keyshortcuts="Control+Enter" title={`${estadoDoEscrito === 'enviado' ? 'Enviar a versão nova' : 'Enviar para a fila'} (${atalho('Mod-Enter')})`} onClick={() => abrirEnviar()}>
             <Icone nome="subir" tam={14} traco={2} />
             <span className="escrita-enviar-nome">Enviar</span>
           </button>
         )}
       </div>
-      {!escreve && (
+      {envio && (
+        <p className="escrita-so-lendo escrita-do-envio" role="status">
+          <Icone nome="olho" tam={15} traco={2} />
+          <span>
+            Você está lendo <b>o último envio</b>
+            {sobreOEnvio(envio.envio).marca && <> ({sobreOEnvio(envio.envio).marca})</>}, de {sobreOEnvio(envio.envio).quando}: a versão que vale para a edição. {envio.comenta ? 'Selecione um trecho para comentar.' : 'O roteiro está fechado: os comentários são de quem a redação convidou.'}
+          </span>
+        </p>
+      )}
+      {!escreve && !envio && (
         <p className="escrita-so-lendo" role="status">
           <Icone nome="olho" tam={15} traco={2} />
           <span>
@@ -422,7 +496,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar }: { inicial: Rot
         </p>
       )}
       <main className="escrita">
-        <article data-visao={visao} className={`folha-escrita${limpo ? ' limpo' : ''}${vazia ? ' vazia' : ''}${escreve ? '' : ' so-leitura'}${liberado ? '' : ' chegando'}`} aria-label="Roteiro sendo escrito" aria-busy={!liberado}>
+        <article data-visao={visao} className={`folha-escrita${limpo ? ' limpo' : ''}${vazia ? ' vazia' : ''}${escreve ? '' : ' so-leitura'}${liberado ? '' : ' chegando'}`} aria-label={envio ? 'O último envio do roteiro' : 'Roteiro sendo escrito'} aria-busy={!liberado}>
           <header className="folha-escrita-cabeca">
             <p className="folha-escrita-sobre">
               Roteiro <span aria-hidden="true">·</span> {estadoDoEscrito === 'enviado' ? <>enviado <span aria-hidden="true">·</span> <span className="folha-escrita-claquete">{meta.claquete}{marcaDaLetraEVersao(letraEVersaoDoRoteiro(meta)) ? ` ${marcaDaLetraEVersao(letraEVersaoDoRoteiro(meta))}` : ''}</span></> : 'sendo escrito'}
@@ -484,25 +558,38 @@ function Folha({ inicial, voltar, avisar, pessoa, topo, enviar }: { inicial: Rot
             <EditorContent editor={editor} />
             {/* #195: na folha vazia, começar de um arquivo ou de um texto colado */}
             {escreve && <ComecarNaFolha corpo={corpo} vazia={vazia} pode={liberado && !!editor} receber={receberDeFora} falhou={avisar} />}
-            <ComentariosDaFolha id={inicial.id} editor={editor} eu={pessoa} avisar={avisar} pedido={pedidoDeComentario} contar={setAbertos} />
-            {editor && <EscritaNaFolha editor={editor} escreve={escreve} ponte={ponte} arteAberta={arteAberta} abrirArte={setArteAberta} />}
+            {comenta && <ComentariosDaFolha id={inicial.id} editor={editor} eu={pessoa} avisar={avisar} pedido={pedidoDeComentario} contar={setAbertos} contarSugestoes={setSugestoes} guardarAncoras={!envio} />}
+            {editor && <EscritaNaFolha editor={editor} escreve={escreve} ponte={ponte} arteAberta={arteAberta} abrirArte={setArteAberta} comentarOTexto={comentarOTexto} />}
           </div>
         </article>
         {/* ao lado da folha: a lista das artes (#190) */}
         <aside className="escrita-lado" aria-label="Ao lado do roteiro">
           {/* o andamento da arte e os envios (#194), depois do primeiro Enviar */}
-          {estadoDoEscrito === 'enviado' && <EnviosDaEscrita id={inicial.id} vez={vezDosEnvios} aoLer={(e) => setUltimoEnvio(e.envios[0] ?? null)} />}
+          {estadoDoEscrito === 'enviado' && comenta && <EnviosDaEscrita id={inicial.id} vez={vezDosEnvios} aoLer={(e) => setUltimoEnvio(e.envios[0] ?? null)} />}
           {editor && <ArtesDaEscrita editor={editor} escreve={escreve} arteAberta={arteAberta} abrirArte={setArteAberta} />}
         </aside>
       </main>
-      {editor && <RodapeDaEscrita editor={editor} />}
+      {editor && <RodapeDaEscrita editor={editor} escreve={escreve} comenta={comenta} />}
+      {/* #198: no celular, a escrita no pé da tela, acima do teclado */}
+      {/* no envio do roteiro fechado (#197), quem não escreve nem comenta só lê: sem a barra */}
+      {editor && celular && !limpo && (escreve || comenta) && (
+        <BarraDoPolegar
+          editor={editor}
+          escreve={escreve}
+          pronto={liberado}
+          programa={() => estado.current.meta.programa}
+          comentar={comentarOTexto}
+          enviar={podeEnviar ? { abrir: abrirEnviar, pode: liberado, enviado: estadoDoEscrito === 'enviado' } : undefined}
+        />
+      )}
       {enviando && enviar && (
         <PainelDoEnviar
-          origem={botaoEnviar.current}
+          origem={origemDoEnviar.current ?? botaoEnviar.current}
           escrito={enviando}
           // o último envio ainda não lido: a letra e a versão que a folha já sabe
           ultimo={estadoDoEscrito === 'enviado' ? (ultimoEnvio ?? { n: 0, em: '', por: { nome: '', email: '' }, motivo: '', claquete: meta.claquete, ...letraEVersaoDoRoteiro(meta) }) : null}
           comentariosAbertos={abertos}
+          sugestoesAbertas={sugestoes}
           enviar={(conferida, opcoes) => enviar(enviando, conferida, { ...opcoes, jaEnviado: estadoDoEscrito === 'enviado' })}
           aoEnviar={aoEnviar}
           fechar={() => setEnviando(null)}

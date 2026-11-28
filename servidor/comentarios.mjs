@@ -34,6 +34,13 @@ export function criarTabelasDosComentarios(db) {
     );
     CREATE INDEX IF NOT EXISTS avisos_de_comentario_email ON avisos_de_comentario (email, visto_em);
   `);
+  // a revisão que volta como sugestão (#196): a sugestão é um comentário de outro tipo, com o texto sugerido, o lote
+  // (a vez do cadeado aberto de quem sugeriu) e a decisão; o resolvido é quem decidiu e quando
+  const tem = (coluna) => db.prepare('PRAGMA table_info(comentarios)').all().some((c) => c.name === coluna);
+  if (!tem('sugerido')) db.exec('ALTER TABLE comentarios ADD COLUMN sugerido TEXT');
+  if (!tem('lote')) db.exec('ALTER TABLE comentarios ADD COLUMN lote TEXT');
+  if (!tem('decisao')) db.exec('ALTER TABLE comentarios ADD COLUMN decisao TEXT');
+  if (!tem('de_copia')) db.exec('ALTER TABLE comentarios ADD COLUMN de_copia TEXT');
 }
 
 export function criarComentarios(db) {
@@ -44,8 +51,18 @@ export function criarComentarios(db) {
       `INSERT INTO comentarios (id, roteiro_id, fio, autor_email, autor_nome, papel, texto, ancora, criado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ),
     resolver: db.prepare('UPDATE comentarios SET resolvido_em = ?, resolvido_email = ?, resolvido_nome = ? WHERE id = ?'),
-    reabrir: db.prepare('UPDATE comentarios SET resolvido_em = NULL, resolvido_email = NULL, resolvido_nome = NULL WHERE id = ?'),
+    reabrir: db.prepare('UPDATE comentarios SET resolvido_em = NULL, resolvido_email = NULL, resolvido_nome = NULL, decisao = NULL WHERE id = ?'),
     ancora: db.prepare('UPDATE comentarios SET ancora = ? WHERE id = ? AND roteiro_id = ? AND fio IS NULL'),
+    // as sugestões (#196)
+    qualquer: db.prepare('SELECT * FROM comentarios WHERE id = ?'),
+    sugerir: db.prepare(
+      `INSERT INTO comentarios (id, roteiro_id, fio, autor_email, autor_nome, papel, texto, ancora, criado_em, sugerido, lote, de_copia) VALUES (?, ?, NULL, ?, ?, ?, '', ?, ?, ?, ?, ?)`,
+    ),
+    mudarSugestao: db.prepare('UPDATE comentarios SET ancora = ?, sugerido = ? WHERE id = ? AND decisao IS NULL'),
+    doLote: db.prepare('SELECT id, decisao FROM comentarios WHERE roteiro_id = ? AND lote = ? AND autor_email = ? AND sugerido IS NOT NULL'),
+    temResposta: db.prepare('SELECT 1 FROM comentarios WHERE fio = ? LIMIT 1'),
+    apagar: db.prepare('DELETE FROM comentarios WHERE id = ? AND decisao IS NULL'),
+    decidir: db.prepare('UPDATE comentarios SET decisao = ?, resolvido_em = ?, resolvido_email = ?, resolvido_nome = ? WHERE id = ? AND sugerido IS NOT NULL'),
     avisar: db.prepare('INSERT OR IGNORE INTO avisos_de_comentario (email, comentario_id, roteiro_id, motivo, criado_em) VALUES (?, ?, ?, ?, ?)'),
     visto: db.prepare('UPDATE avisos_de_comentario SET visto_em = ? WHERE email = ? AND roteiro_id = ? AND visto_em IS NULL'),
     novos: db.prepare('SELECT comentario_id, motivo FROM avisos_de_comentario WHERE email = ? AND roteiro_id = ? AND visto_em IS NULL'),
@@ -63,6 +80,7 @@ export function criarComentarios(db) {
     criadoEm: l.criado_em,
     ancora: l.ancora ? JSON.parse(l.ancora) : null,
     resolvido: l.resolvido_em ? { em: l.resolvido_em, por: { nome: l.resolvido_nome, email: l.resolvido_email } } : null,
+    ...(l.sugerido != null ? { sugestao: { texto: l.sugerido, decisao: l.decisao ?? null } } : {}),
   });
 
   return {
@@ -94,6 +112,42 @@ export function criarComentarios(db) {
       for (const [id, a] of ancoras) n += Number(q.ancora.run(JSON.stringify(a), id, roteiro).changes);
       return n;
     },
+    /**
+     * As sugestões de um lote (#196), como estão agora no navegador de quem sugeriu: cada uma entra (com o aviso) ou
+     * muda no lugar (pelo id, enquanto ninguém decidiu); as do lote que não vêm mais (a mudança foi desfeita) saem, a
+     * menos que já tenham resposta. A decidida não muda: volta em `decididas`, para quem sugeriu esquecer o trecho.
+     * @returns { decididas: ids, novas: quantas entraram }
+     */
+    sugerir({ roteiro, copia, lote, autor, papel, sugestoes, avisos = [], em }) {
+      const decididas = [];
+      let novas = 0;
+      db.exec('BEGIN');
+      try {
+        const doLote = new Map(q.doLote.all(roteiro, lote, autor.email).map((l) => [l.id, l]));
+        for (const s of sugestoes) {
+          const ja = q.qualquer.get(s.id);
+          if (ja) {
+            // o id é de outra pessoa ou de outro roteiro: não mexe
+            if (ja.roteiro_id !== roteiro || ja.autor_email !== autor.email || ja.sugerido == null) continue;
+            if (ja.decisao) decididas.push(s.id);
+            else q.mudarSugestao.run(JSON.stringify(s.ancora), s.texto, s.id);
+            continue;
+          }
+          q.sugerir.run(s.id, roteiro, autor.email, autor.nome, papel, JSON.stringify(s.ancora), em, s.texto, lote, copia);
+          for (const a of avisos) q.avisar.run(a.email, s.id, roteiro, a.motivo, em);
+          novas++;
+        }
+        const vieram = new Set(sugestoes.map((s) => s.id));
+        for (const [id, l] of doLote) if (!vieram.has(id) && !l.decisao && !q.temResposta.get(id)) q.apagar.run(id);
+        db.exec('COMMIT');
+      } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
+      }
+      return { decididas, novas };
+    },
+    /** Quem escreve decide a sugestão: 'aceita' ou 'recusada'. */
+    decidir: (id, decisao, por, em) => q.decidir.run(decisao, em, por.email, por.nome, id),
     /** Os comentários com aviso desta pessoa ainda não visto, neste roteiro ({ id: motivo }). */
     novos: (email, roteiro) => Object.fromEntries(q.novos.all(email, roteiro).map((l) => [l.comentario_id, l.motivo])),
     /** A pessoa viu o roteiro: os avisos dela nele somem. */

@@ -43,7 +43,7 @@ import { reconhecerPraca } from './modelo/pracas';
     tudo passa pela revisão e vai pelo botão Enviar. */
 const ENVIO_AUTOMATICO = false;
 
-type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | ({ t: 'cadastros'; aba?: TipoCadastro; claquete?: string; ilhas?: boolean } & Partial<AtracaoNova>) | { t: 'filmes'; id?: string } | { t: 'configuracao'; pagina?: 'historico' | 'portainer' } | { t: 'andamento' } | { t: 'correcoes' } | { t: 'pauta'; semana?: string; dia?: string } | { t: 'montar'; dia: string } | { t: 'area'; area: AreaDosRoteiros; roteiro?: string } | { t: 'producoes' } | { t: 'campanhas'; id?: string } | { t: 'roteiros'; id?: string };
+type Tela = { t: 'biblioteca' } | { t: 'editor'; id: string } | { t: 'comparar'; id: string } | ({ t: 'cadastros'; aba?: TipoCadastro; claquete?: string; ilhas?: boolean } & Partial<AtracaoNova>) | { t: 'filmes'; id?: string } | { t: 'configuracao'; pagina?: 'historico' | 'portainer' } | { t: 'andamento' } | { t: 'correcoes' } | { t: 'pauta'; semana?: string; dia?: string } | { t: 'montar'; dia: string } | { t: 'area'; area: AreaDosRoteiros; roteiro?: string } | { t: 'producoes' } | { t: 'campanhas'; id?: string } | { t: 'roteiros'; id?: string; envio?: boolean };
 
 /** Um arquivo solto na fila que não deu para ler. Some ao recarregar. */
 export interface Falha {
@@ -73,8 +73,9 @@ const telaDoHash = (): Tela => {
   if (/^#\/andamento\/?$/.test(location.hash)) return { t: 'andamento' };
   if (/^#\/correcoes\/?$/.test(location.hash)) return { t: 'correcoes' };
   // "Roteiros" (#189): a lista dos escritos no PROMeiro (o caminho da Designer e da coordenação) e a folha de escrita
-  const ro = /^#\/roteiros(?:\/([^/]+))?\/?$/.exec(location.hash);
-  if (ro) return { t: 'roteiros', id: ro[1] ? decodeURIComponent(ro[1]) : undefined };
+  // e o último envio, em leitura e nas colunas, que a edição abre pela Pauta (#197)
+  const ro = /^#\/roteiros(?:\/([^/]+)(\/envio)?)?\/?$/.exec(location.hash);
+  if (ro) return { t: 'roteiros', id: ro[1] ? decodeURIComponent(ro[1]) : undefined, ...(ro[1] && ro[2] ? { envio: true } : {}) };
   // a tela de produções (#109): na área Designer, ao lado da agenda No Trello
   if (/^#\/designer\/producoes\/?$/.test(location.hash)) return { t: 'producoes' };
   // as campanhas (#180): a lista e a página de cada uma, com o endereço próprio
@@ -293,7 +294,7 @@ export function App() {
   }, [aviso]);
 
   const ir = useCallback((nova: Tela, { substituir = false }: { substituir?: boolean } = {}) => {
-    const hash = nova.t === 'editor' ? `#/r/${encodeURIComponent(nova.id)}` : nova.t === 'comparar' ? `#/comparar/${encodeURIComponent(nova.id)}` : nova.t === 'cadastros' ? `#/cadastros/${nova.ilhas ? 'ilhas' : (nova.aba ?? 'atracoes')}` : nova.t === 'filmes' ? `#/filmes${nova.id ? `/${encodeURIComponent(nova.id)}` : ''}` : nova.t === 'configuracao' ? `#/configuracao${nova.pagina ? `/${nova.pagina}` : ''}` : nova.t === 'andamento' ? '#/andamento' : nova.t === 'correcoes' ? '#/correcoes' : nova.t === 'pauta' ? hashDaPauta(nova) : nova.t === 'montar' ? `#/pauta/montar${nova.dia ? `/${nova.dia}` : ''}` : nova.t === 'area' ? `#/${nova.area}${nova.roteiro ? `/r/${encodeURIComponent(nova.roteiro)}` : ''}` : nova.t === 'producoes' ? '#/designer/producoes' : nova.t === 'campanhas' ? (nova.id ? hashDaCampanha(nova.id) : HASH_DAS_CAMPANHAS) : nova.t === 'roteiros' ? `#/roteiros${nova.id ? `/${encodeURIComponent(nova.id)}` : ''}` : '#/';
+    const hash = nova.t === 'editor' ? `#/r/${encodeURIComponent(nova.id)}` : nova.t === 'comparar' ? `#/comparar/${encodeURIComponent(nova.id)}` : nova.t === 'cadastros' ? `#/cadastros/${nova.ilhas ? 'ilhas' : (nova.aba ?? 'atracoes')}` : nova.t === 'filmes' ? `#/filmes${nova.id ? `/${encodeURIComponent(nova.id)}` : ''}` : nova.t === 'configuracao' ? `#/configuracao${nova.pagina ? `/${nova.pagina}` : ''}` : nova.t === 'andamento' ? '#/andamento' : nova.t === 'correcoes' ? '#/correcoes' : nova.t === 'pauta' ? hashDaPauta(nova) : nova.t === 'montar' ? `#/pauta/montar${nova.dia ? `/${nova.dia}` : ''}` : nova.t === 'area' ? `#/${nova.area}${nova.roteiro ? `/r/${encodeURIComponent(nova.roteiro)}` : ''}` : nova.t === 'producoes' ? '#/designer/producoes' : nova.t === 'campanhas' ? (nova.id ? hashDaCampanha(nova.id) : HASH_DAS_CAMPANHAS) : nova.t === 'roteiros' ? `#/roteiros${nova.id ? `/${encodeURIComponent(nova.id)}${nova.envio ? '/envio' : ''}` : ''}` : '#/';
     try {
       // `substituir`: o endereço que só leva a outro (a revisão de um roteiro sendo escrito, #189) não fica no histórico
       if (location.hash !== hash) history[substituir ? 'replaceState' : 'pushState'](null, '', hash);
@@ -326,9 +327,12 @@ export function App() {
   if (tela.t === 'area' && tela.area === 'redator' && !tela.roteiro) listaDosRoteiros.current = 'redator';
   if (tela.t === 'roteiros' && !tela.id) listaDosRoteiros.current = 'roteiros';
   const listaDaFolha = listaDosRoteiros.current ?? (areas.includes('redator') ? 'redator' : 'roteiros');
+  // a Pauta de onde o envio abriu (#197), para voltar à mesma semana ou ao mesmo dia
+  const ultimaPauta = useRef<Extract<Tela, { t: 'pauta' }> | null>(null);
+  if (tela.t === 'pauta') ultimaPauta.current = tela;
   // a área em que a pessoa está fica lembrada no servidor: é nela que o PROMeiro abre da próxima vez; os Roteiros (#189)
   // são da área de onde vieram
-  const areaAgora = tela.t === 'roteiros' ? (tela.id ? listaDaFolha : 'roteiros') === 'redator' ? 'redator' : 'designer' : areaDaTela(tela);
+  const areaAgora = tela.t === 'roteiros' && tela.envio ? null : tela.t === 'roteiros' ? (tela.id ? listaDaFolha : 'roteiros') === 'redator' ? 'redator' : 'designer' : areaDaTela(tela);
   const voltarAosRoteiros = useCallback(() => ir(listaDaFolha === 'redator' ? { t: 'area', area: 'redator' } : { t: 'roteiros' }), [ir, listaDaFolha]);
   const abrirNaRevisao = useCallback((id: string) => ir({ t: 'editor', id }, { substituir: true }), [ir]);
   const abrirEscrito = useCallback((id: string) => ir({ t: 'roteiros', id }), [ir]);
@@ -642,7 +646,10 @@ export function App() {
           topo={topoDaDesigner('roteiros')}
         />
       )}
-      {tela.t === 'roteiros' && tela.id && (
+      {tela.t === 'roteiros' && tela.id && tela.envio && (
+        <TelaDeEscrita key={`${tela.id}-envio`} id={tela.id} envio voltar={() => ir(ultimaPauta.current ?? { t: 'pauta', ...entradaDaPauta() })} abrirOEscrito={abrirEscrito} abrirNaRevisao={abrirNaRevisao} avisar={avisar} pessoa={pessoa} topo={topoDaDesigner('pauta')} />
+      )}
+      {tela.t === 'roteiros' && tela.id && !tela.envio && (
         <TelaDeEscrita key={tela.id} id={tela.id} voltar={voltarAosRoteiros} enviar={enviarDaEscrita} abrirNaRevisao={abrirNaRevisao} avisar={avisar} pessoa={pessoa} topo={listaDaFolha === 'redator' ? topoDaArea('redator') : topoDaDesigner('roteiros')} />
       )}
       {tela.t === 'producoes' && (

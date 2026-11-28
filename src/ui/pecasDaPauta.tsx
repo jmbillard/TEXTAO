@@ -331,6 +331,9 @@ export function FichaDaClaquete({ linha: daPauta, linhas: todas, hoje, voce, pel
       {/* o apelido da claquete (#154), com ou sem roteiro no PROMeiro; o lápis abre o campo (#156) */}
       <ApelidoDaClaquete alvo={{ claquete: daPauta.texto }} claquete={daPauta.texto} versoes={lidasDaLinha(daPauta)} dia={daPauta.dia} podeMudar={podeMudar} pedidoDoLapis={pedidoDoLapis} />
 
+      {/* o roteiro escrito no PROMeiro (#197), pela Produção: abre o último envio, em leitura e nas colunas */}
+      <RoteiroDaClaquete producoes={producoes} />
+
       <h3>Produção da arte</h3>
       <div className="pauta-ficha-producao" data-etapa={resumo?.etapa ?? 'sem-card'}>
         <BolinhaDeEstado estado={resumo?.etapa ?? 'sem-card'} tam="ficha" className="pauta-ficha-ponto" />
@@ -422,6 +425,40 @@ export function FichaDaClaquete({ linha: daPauta, linhas: todas, hoje, voce, pel
         <p className="pauta-nenhum">nenhum aviso</p>
       )}
     </div>
+  );
+}
+
+/** O endereço do último envio de um Roteiro escrito no PROMeiro, em leitura e nas colunas (#197). */
+export const hashDoEnvio = (escrito: string) => `#/roteiros/${encodeURIComponent(escrito)}/envio`;
+
+/**
+ * O roteiro da claquete escrito no PROMeiro (#197): a Produção liga a claquete à cópia do envio na fila, e a cópia ao
+ * escrito. Um link por roteiro (as praças do mesmo roteiro juntas); sem roteiro escrito, nada. O link abre o último
+ * envio, a versão que vale para a edição, já nas colunas, com os timecodes, os caminhos e o comentar.
+ */
+function RoteiroDaClaquete({ producoes }: { producoes: readonly ProducaoNaPauta[] }) {
+  const porEscrito = new Map<string, string[]>();
+  for (const p of producoes) if (p.escrito) porEscrito.set(p.escrito, [...(porEscrito.get(p.escrito) ?? []), p.praca].filter(Boolean));
+  if (!porEscrito.size) return null;
+  const varios = porEscrito.size > 1;
+  return (
+    <>
+      <h3>Roteiro</h3>
+      <div className="pauta-ficha-roteiros">
+        {[...porEscrito].map(([escrito, pracas]) => (
+          <div key={escrito} className="pauta-ficha-roteiro">
+            <Icone nome="colunas" tam={18} traco={1.8} />
+            <div>
+              <div className="pauta-ficha-etapa">Escrito no PROMeiro{varios && pracas.length ? ` · ${pracas.join(' · ')}` : ''}</div>
+              <div className="pauta-ficha-mais">o último envio, em colunas, com os timecodes e os arquivos</div>
+            </div>
+            <a className="botao primario pauta-ficha-abrir" href={hashDoEnvio(escrito)}>
+              Abrir o roteiro
+            </a>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 

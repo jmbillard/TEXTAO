@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type MutableRefObject } from 'react';
+import { createPortal } from 'react-dom';
 import type { Editor } from '@tiptap/core';
-import { aplicarComando, barraNoCursor, definirTipo, tipoDoNo, trechoNoCursor, type PonteDaEscrita } from '../editor/escrita';
+import { abrirBarraNoCursor, aplicarComando, arteNoSelecionadoOuNoTrecho, barraNoCursor, darTipoNoCursor, definirTipo, tipoDoNo, trechoNoCursor, type PonteDaEscrita } from '../editor/escrita';
 import { listarMarcas, marcaEm, type MarcaNoDoc } from '../editor/extensoes';
 import { chaveDeArte } from '../modelo/diferencas';
-import { CICLO_DOS_TIPOS, comandosQueBatem, contagemDoTexto, duracaoLegivel, artesDoTexto, nomeDoArquivo, SOBRE_O_TIPO, type ComandoDaBarra, type FichaNoTexto, type TipoDoTrecho } from '../modelo/trecho';
+import { CICLO_DOS_TIPOS, COMANDO_DO_COMENTARIO, comandosQueBatem, ESCOLHAS_DO_COMENTARIO, type EscolhaDoComentario, contagemDoTexto, duracaoLegivel, artesDoTexto, nomeDoArquivo, SOBRE_O_TIPO, type ComandoDaBarra, type FichaNoTexto, type TipoDoTrecho } from '../modelo/trecho';
 import { nomesDosTipos, normalizarSubtipo, type NoJSON } from '../modelo/tipos';
 import { Atalhos } from './Atalhos';
+import { ArtesQueRecolhem } from './ArtesQueRecolhem';
 import { Icone, Selo, type NomeIcone } from './icones';
 import { PopoverMarca } from './TelaEditor';
-import { ATALHO_DE_COMENTAR, atalho, copiarTexto } from './util';
+import { ATALHO_DE_COMENTAR, atalho, copiarTexto, semMovimento } from './util';
 import { Vagas } from './vagas';
+import { useTecladoNaTela } from './tecladoNaTela';
 
 /* Escrever na folha (#190, spec #186): o que a folha de escrita mostra por cima do editor. A margem dos tipos à
    esquerda (o rótulo de cada trecho, com o "?" do palpite, que se troca no clique ou no Tab), o menu do "/", o balão
@@ -253,14 +256,17 @@ function Marcado({ texto, q }: { texto: string; q: string }) {
   );
 }
 
-function MenuDaBarra({ q, lista, ativo, x, y, escolher, apontar }: { q: string; lista: ComandoDaBarra[]; ativo: number; x: number; y: number; escolher: (c: ComandoDaBarra) => void; apontar: (i: number) => void }) {
+/** A altura que o menu do "/" pode tomar, para ver se cabe embaixo do cursor (no celular, #198). */
+const ALTURA_DO_MENU = 260;
+
+function MenuDaBarra({ q, lista, ativo, x, y, acima, escolher, apontar }: { q: string; lista: ComandoDaBarra[]; ativo: number; x: number; y: number; acima?: boolean; escolher: (c: ComandoDaBarra) => void; apontar: (i: number) => void }) {
   const caixa = useRef<HTMLDivElement>(null);
   // a opção ativa fica à vista quando as setas descem além da borda
   useEffect(() => {
     caixa.current?.querySelector('.menu-item.ativo')?.scrollIntoView({ block: 'nearest' });
   }, [ativo]);
   return (
-    <div ref={caixa} className="menu menu-da-barra" role="listbox" aria-label="Comandos" style={{ left: x, top: y }} onMouseDown={(e) => e.preventDefault()}>
+    <div ref={caixa} className={`menu menu-da-barra${acima ? ' acima' : ''}`} role="listbox" aria-label="Comandos" style={{ left: x, top: y }} onMouseDown={(e) => e.preventDefault()}>
       <div className="menu-cab-escrita">
         <span>Comandos</span>
         <code>/{q}</code>
@@ -277,6 +283,93 @@ function MenuDaBarra({ q, lista, ativo, x, y, escolher, apontar }: { q: string; 
           <code className="menu-atalho">/{c.id}</code>
         </button>
       ))}
+    </div>
+  );
+}
+
+/* ---------- a escolha do "/comentario" ---------- */
+
+/** O trecho com texto mais perto antes de `pos` (o de cima do trecho vazio), para o comentário ter o que grifar. */
+function trechoComTextoAntes(editor: Editor, pos: number): ReturnType<typeof trechoNoCursor> {
+  const achados: NonNullable<ReturnType<typeof trechoNoCursor>>[] = [];
+  editor.state.doc.forEach((no, p) => {
+    if (p <= pos && no.type.name === 'paragraph' && no.textContent.trim()) achados.push({ pos: p, no });
+  });
+  return achados.at(-1) ?? null;
+}
+
+/**
+ * O que o "/comentario" pergunta: o recado (o aviso dentro do texto, que vai no Enviar) para a edição, a produção ou a
+ * arte, ou o comentário sobre o texto (o fio, que não vai). O menu do "/" de sempre, com as setas, o Enter, os números
+ * e o Esc.
+ */
+function MenuDoComentario({ x, y, acima, escolher }: { x: number; y: number; acima?: boolean; escolher: (e: EscolhaDoComentario | null) => void }) {
+  const [ativo, setAtivo] = useState(0);
+  const n = ESCOLHAS_DO_COMENTARIO.length;
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const k = Number(e.key);
+      if (/^[1-9]$/.test(e.key) && k <= n) {
+        e.preventDefault();
+        e.stopPropagation();
+        return escolher(ESCOLHAS_DO_COMENTARIO[k - 1]);
+      }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || (e.key === 'Tab' && !e.shiftKey)) {
+        e.preventDefault();
+        e.stopPropagation();
+        setAtivo((i) => (i + (e.key === 'ArrowUp' ? -1 : 1) + n) % n);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        escolher(ESCOLHAS_DO_COMENTARIO[ativo]);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        escolher(null);
+      } else if (e.key.length === 1 || e.key === 'Backspace') {
+        // digitar segue no texto: a escolha fecha
+        escolher(null);
+      }
+    };
+    // antes do editor: as teclas são da escolha enquanto ela está aberta
+    window.addEventListener('keydown', tecla, true);
+    return () => window.removeEventListener('keydown', tecla, true);
+  }, [ativo, n, escolher]);
+  useEffect(() => {
+    const fora = (e: PointerEvent) => !(e.target as HTMLElement).closest('.menu-do-comentario') && escolher(null);
+    window.addEventListener('pointerdown', fora, true);
+    return () => window.removeEventListener('pointerdown', fora, true);
+  }, [escolher]);
+  const item = (e: EscolhaDoComentario, i: number) => (
+    <button
+      key={e.id}
+      type="button"
+      role="menuitem"
+      className={`menu-item alto${i === ativo ? ' ativo' : ''}`}
+      data-escolha={e.id}
+      data-tipo={e.tipo}
+      onMouseEnter={() => setAtivo(i)}
+      onClick={() => escolher(e)}
+    >
+      <Selo nome={e.tipo ? ICONE_DO_TIPO[e.tipo] : 'comentario'} />
+      <span className="menu-texto">
+        <strong>{e.nome}</strong>
+        <small>{e.dica}</small>
+      </span>
+      <kbd className="menu-atalho">{i + 1}</kbd>
+    </button>
+  );
+  const recados = ESCOLHAS_DO_COMENTARIO.filter((e) => e.tipo);
+  return (
+    <div className={`menu menu-da-barra menu-do-comentario${acima ? ' acima' : ''}`} role="menu" aria-label="Recado ou comentário" style={{ left: x, top: y }} onMouseDown={(e) => e.preventDefault()}>
+      <div className="menu-cab-escrita">
+        <span>Recado para…</span>
+        <span>vai no Enviar</span>
+      </div>
+      {recados.map(item)}
+      <div className="menu-sep" />
+      {ESCOLHAS_DO_COMENTARIO.filter((e) => !e.tipo).map((e) => item(e, recados.length))}
     </div>
   );
 }
@@ -314,7 +407,22 @@ function BalaoDaFicha({ ficha, x, y }: { ficha: { tipo: FichaNoTexto['tipo']; te
  * O que a escrita mostra dentro da folha (no corpo, `data-margem="tipos"`): a margem, o menu do "/", o menu do tipo e os
  * balões. Liga a ponte da extensão `Escrita` a cada desenho.
  */
-export function EscritaNaFolha({ editor, escreve, ponte, arteAberta, abrirArte }: { editor: Editor; escreve: boolean; ponte: MutableRefObject<PonteDaEscrita>; arteAberta: string | null; abrirArte: (id: string | null) => void }) {
+export function EscritaNaFolha({
+  editor,
+  escreve,
+  ponte,
+  arteAberta,
+  abrirArte,
+  comentarOTexto,
+}: {
+  editor: Editor;
+  escreve: boolean;
+  ponte: MutableRefObject<PonteDaEscrita>;
+  arteAberta: string | null;
+  abrirArte: (id: string | null) => void;
+  /** abre o fio do comentário (#192) no trecho selecionado: o mesmo do botão Comentar e do Ctrl+Alt+M */
+  comentarOTexto: () => void;
+}) {
   useVersaoDoEditor(editor);
   const corpo = useCallback(() => editor.view.dom.closest<HTMLElement>('.folha-escrita-corpo'), [editor]);
 
@@ -333,10 +441,28 @@ export function EscritaNaFolha({ editor, escreve, ponte, arteAberta, abrirArte }
   const lista = barra && barra.from === barraEm ? comandosQueBatem(barra.q) : [];
   const menuAberto = escreve && !!barra && lista.length > 0;
   useEffect(() => setAtivo(0), [barra?.q]);
+  // o "/comentario" pergunta qual dos dois (o recado ou o comentário), no mesmo lugar do menu do "/"
+  const [escolha, setEscolha] = useState<{ x: number; y: number; acima?: boolean } | null>(null);
   const escolherComando = (c: ComandoDaBarra) => {
     if (!barra) return;
+    const onde = posDaBarra;
     setBarraEm(null);
     aplicarComando(editor, c, barra);
+    if (c.id === COMANDO_DO_COMENTARIO.id) setEscolha(onde ?? { x: 0, y: 0 });
+  };
+  const escolherNoComentario = (e: EscolhaDoComentario | null) => {
+    setEscolha(null);
+    if (!e) return void editor.commands.focus();
+    const t = trechoNoCursor(editor.state);
+    if (e.tipo) {
+      if (t) definirTipo(editor, t.pos, e.tipo);
+      return void editor.commands.focus();
+    }
+    // o comentário sobre o texto: o trecho todo (ou, vazio, o de cima) é o grifo do fio
+    const alvo = t && t.no.textContent.trim() ? t : trechoComTextoAntes(editor, t?.pos ?? 0);
+    if (!alvo) return void editor.commands.focus();
+    editor.chain().focus().setTextSelection({ from: alvo.pos + 1, to: alvo.pos + 1 + alvo.no.content.size }).run();
+    comentarOTexto();
   };
 
   // o menu do tipo (clique na margem) e os balões
@@ -413,7 +539,10 @@ export function EscritaNaFolha({ editor, escreve, ponte, arteAberta, abrirArte }
     if (!menuAberto || !barra) return null;
     try {
       const c = editor.view.coordsAtPos(barra.from);
-      return naFolha(corpo(), c.left - 10, c.bottom + 6);
+      // no celular (#198), o menu abre para cima quando embaixo dele vem a barra do polegar (e o teclado)
+      const polegar = document.querySelector('.barra-do-polegar')?.getBoundingClientRect().top;
+      const acima = polegar !== undefined && c.bottom + 6 + ALTURA_DO_MENU > polegar - 8 && c.top - ALTURA_DO_MENU > 8;
+      return { ...naFolha(corpo(), c.left - 10, acima ? c.top - 6 : c.bottom + 6), acima };
     } catch {
       return null;
     }
@@ -433,10 +562,140 @@ export function EscritaNaFolha({ editor, escreve, ponte, arteAberta, abrirArte }
         }}
       />
       {menuDoTipo && <MenuDoTipo key={menuDoTipo.pos} editor={editor} pos={menuDoTipo.pos} x={menuDoTipo.x} y={menuDoTipo.y} fechar={() => setMenuDoTipo(null)} />}
-      {menuAberto && barra && posDaBarra && <MenuDaBarra q={barra.q} lista={lista} ativo={Math.min(ativo, lista.length - 1)} x={posDaBarra.x} y={posDaBarra.y} escolher={escolherComando} apontar={setAtivo} />}
+      {escolha && <MenuDoComentario x={escolha.x} y={escolha.y} acima={escolha.acima} escolher={escolherNoComentario} />}
+      {menuAberto && barra && posDaBarra && <MenuDaBarra q={barra.q} lista={lista} ativo={Math.min(ativo, lista.length - 1)} x={posDaBarra.x} y={posDaBarra.y} acima={posDaBarra.acima} escolher={escolherComando} apontar={setAtivo} />}
       {ficha && <BalaoDaFicha key={ficha.texto} ficha={ficha} x={ficha.x} y={ficha.y} />}
       {marca && posDaMarca && <PopoverMarca editor={editor} marca={marca} x={posDaMarca.x} y={posDaMarca.y} fechar={() => abrirArte(null)} />}
     </>
+  );
+}
+
+/* ---------- a barra do polegar, no celular (#198) ---------- */
+
+/** O Enviar na barra do polegar: abre o painel (#194), que cresce do botão. */
+export interface EnviarDaBarra {
+  abrir: (origem: HTMLElement) => void;
+  pode: boolean;
+  /** já foi enviado uma vez: o botão diz "Enviar a versão nova" */
+  enviado: boolean;
+}
+
+/**
+ * No celular, a margem dos tipos sai e a escrita vem para o pé da tela, ao alcance do polegar, acima do teclado
+ * (`useTecladoNaTela`): os tipos (o do trecho do cursor aceso, com o "?" do palpite), o "/" (o menu dos comandos), a
+ * Arte (o Ctrl+U) e o Enviar. Com um trecho selecionado, os tipos dão lugar ao Comentar (a folha de baixo do #192). Os
+ * toques não tiram o foco do texto: o teclado fica aberto. Quem só lê tem só o Comentar. Vai para o corpo da página: a
+ * folha que anima prenderia o `position: fixed`.
+ */
+export function BarraDoPolegar({ editor, escreve, pronto, programa, comentar, enviar }: { editor: Editor; escreve: boolean; pronto: boolean; programa: () => string; comentar: () => void; enviar?: EnviarDaBarra }) {
+  useVersaoDoEditor(editor);
+  const teclado = useTecladoNaTela(true);
+  const barra = useRef<HTMLDivElement>(null);
+  const caixaDosTipos = useRef<HTMLDivElement>(null);
+  const trecho = trechoNoCursor(editor.state);
+  const atual = trecho ? tipoDoNo(trecho.no) : null;
+  const selecao = !editor.state.selection.empty;
+  const pode = escreve && pronto;
+
+  // o tipo aceso fica à vista na faixa dos tipos (só ela rola para o lado, nunca a página)
+  useLayoutEffect(() => {
+    const caixa = caixaDosTipos.current;
+    const el = caixa?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!caixa || !el) return;
+    const esq = el.offsetLeft - caixa.offsetLeft;
+    if (esq >= caixa.scrollLeft && esq + el.offsetWidth <= caixa.scrollLeft + caixa.clientWidth) return;
+    const alvo = esq - (caixa.clientWidth - el.offsetWidth) / 2;
+    if (typeof caixa.scrollTo === 'function') caixa.scrollTo({ left: alvo, behavior: semMovimento() ? 'auto' : 'smooth' });
+    else caixa.scrollLeft = alvo;
+  }, [atual?.tipo, selecao]);
+
+  // o cursor não se esconde atrás da barra nem do teclado: o editor rola com essa folga embaixo
+  useEffect(() => {
+    if (editor.isDestroyed) return;
+    const antes = editor.options.editorProps;
+    const altura = barra.current?.offsetHeight ?? 0;
+    // (o limiar decide quando rolar; a margem, quanto)
+    const folga = { top: 16, bottom: altura + teclado + 16, left: 5, right: 5 };
+    editor.setOptions({ editorProps: { ...antes, scrollThreshold: folga, scrollMargin: folga } });
+    // o teclado que abre não esconde o cursor
+    if (teclado && editor.isFocused) editor.commands.scrollIntoView();
+    return () => {
+      if (!editor.isDestroyed) editor.setOptions({ editorProps: antes });
+    };
+  }, [editor, teclado, selecao]);
+
+  const comentarBotao = (
+    <button type="button" className="botao polegar-comentar" onClick={comentar} aria-keyshortcuts="Control+Alt+M">
+      <Icone nome="comentario" tam={15} traco={2} />
+      <span>{escreve ? 'Comentar o trecho' : 'Comentar'}</span>
+    </button>
+  );
+  return createPortal(
+    <div
+      ref={barra}
+      className={`barra-do-polegar${escreve ? '' : ' so-comentar'}${teclado ? ' com-teclado' : ''}`}
+      role="toolbar"
+      aria-label={escreve ? 'Escrever' : 'Comentar'}
+      style={teclado ? { bottom: `${teclado}px` } : undefined}
+      // o toque não tira o foco do texto: o teclado fica aberto
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      {!escreve ? (
+        <>
+          <span className="polegar-dica">{selecao ? 'O trecho selecionado' : 'Selecione um trecho para comentar.'}</span>
+          {comentarBotao}
+        </>
+      ) : (
+        <>
+          {selecao ? (
+            comentarBotao
+          ) : (
+            <div className="polegar-tipos" ref={caixaDosTipos} role="group" aria-label="O tipo do trecho">
+              {CICLO_DOS_TIPOS.map((t) => {
+                const aceso = atual?.tipo === t;
+                const palpite = aceso && !atual.confirmado;
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    className={`polegar-tipo${palpite ? ' palpite' : ''}`}
+                    data-tipo={t}
+                    aria-pressed={aceso}
+                    aria-label={`${SOBRE_O_TIPO[t].nome}${palpite ? ', adivinhado pelo texto: toque para confirmar' : ''}`}
+                    disabled={!pode || !trecho}
+                    onClick={() => darTipoNoCursor(editor, t)}
+                  >
+                    {SOBRE_O_TIPO[t].rotulo}
+                    {palpite && <i aria-hidden="true">?</i>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <span className="polegar-acoes">
+            <button type="button" className="polegar-acao polegar-barra" aria-label="Comandos (/)" title="Comandos: o mesmo que digitar /" disabled={!pode || selecao} onClick={() => abrirBarraNoCursor(editor)}>
+              <code aria-hidden="true">/</code>
+            </button>
+            <button
+              type="button"
+              className="polegar-acao polegar-arte"
+              aria-pressed={atual?.tipo === 'arte'}
+              title={selecao ? 'Marcar o selecionado como arte' : 'O trecho todo vira arte (ou deixa de ser)'}
+              disabled={!pode}
+              onClick={() => arteNoSelecionadoOuNoTrecho(editor, programa())}
+            >
+              Arte
+            </button>
+            {enviar && (
+              <button type="button" className="botao primario polegar-enviar" aria-label={enviar.enviado ? 'Enviar a versão nova' : 'Enviar para a fila'} title={enviar.enviado ? 'Enviar a versão nova' : 'Enviar para a fila'} disabled={!enviar.pode} onClick={(e) => enviar.abrir(e.currentTarget)}>
+                <Icone nome="subir" tam={17} traco={2} />
+              </button>
+            )}
+          </span>
+        </>
+      )}
+    </div>,
+    document.body,
   );
 }
 
@@ -467,8 +726,9 @@ function artesNaLista(editor: Editor): ArteNaLista[] {
   });
 }
 
-/** A lista das artes ao lado da folha, como a da revisão: numeradas e sem repetir. O clique leva à arte no texto e abre
-    o balão dela (o tipo da arte, opcional, e a observação). */
+/** A lista das artes ao lado da folha, como a da revisão: numeradas e sem repetir, no `ArtesQueRecolhem` (recolhe pelo
+    cabeçalho e pelo Ctrl+Alt+A, como a da revisão). O clique leva à arte no texto e abre o balão dela (o tipo da arte,
+    opcional, e a observação). */
 export function ArtesDaEscrita({ editor, escreve, abrirArte, arteAberta }: { editor: Editor; escreve: boolean; abrirArte: (id: string | null) => void; arteAberta: string | null }) {
   useVersaoDoEditor(editor);
   const artes = artesNaLista(editor);
@@ -480,13 +740,7 @@ export function ArtesDaEscrita({ editor, escreve, abrirArte, arteAberta }: { edi
     if (escreve) abrirArte(a.marca.id);
   };
   return (
-    <section className="cartao artes-da-escrita" aria-label="As artes do roteiro">
-      <div className="cab-artes">
-        <b>
-          <i>{artes.length}</i> {artes.length === 1 ? 'arte' : 'artes'}
-        </b>
-        <span className="rotulo">vão para a arte</span>
-      </div>
+    <ArtesQueRecolhem className="artes-da-escrita" n={artes.length} extra={<span className="rotulo">vão para a arte</span>}>
       <ol className="artes so-lista">
         <Vagas
           itens={artes}
@@ -494,7 +748,13 @@ export function ArtesDaEscrita({ editor, escreve, abrirArte, arteAberta }: { edi
           como="li"
           vazio={
             <p className="suave pequeno artes-da-escrita-vazio">
-              Selecione um trecho e use <kbd>{atalho('Mod-u')}</kbd>: a arte aparece aqui.
+              {escreve ? (
+                <>
+                  Selecione um trecho e use <kbd>{atalho('Mod-u')}</kbd>: a arte aparece aqui.
+                </>
+              ) : (
+                'Nenhuma arte no texto ainda.'
+              )}
             </p>
           }
         >
@@ -513,8 +773,9 @@ export function ArtesDaEscrita({ editor, escreve, abrirArte, arteAberta }: { edi
           )}
         </Vagas>
       </ol>
-      <p className="artes-da-escrita-nota suave pequeno">As artes saem do texto: o trecho de arte e o que você marca com {atalho('Mod-u')}.</p>
-    </section>
+      {/* em leitura, sem o atalho de escrever */}
+      <p className="artes-da-escrita-nota suave pequeno">{escreve ? <>As artes saem do texto: o trecho de arte e o que você marca com {atalho('Mod-u')}.</> : 'As artes saem do texto: o trecho de arte e o sublinhado.'}</p>
+    </ArtesQueRecolhem>
   );
 }
 
@@ -524,7 +785,7 @@ const numero = (n: number) => n.toLocaleString('pt-BR');
 
 /** O rodapé da folha, o mesmo da revisão (`estatisticas`): as palavras, as da locução, o tempo de leitura e as artes; e
     os atalhos à vista, com o cartão "?". */
-export function RodapeDaEscrita({ editor }: { editor: Editor }) {
+export function RodapeDaEscrita({ editor, escreve = true, comenta = true }: { editor: Editor; escreve?: boolean; comenta?: boolean }) {
   useVersaoDoEditor(editor);
   const doc = editor.getJSON() as NoJSON;
   const c = contagemDoTexto(doc);
@@ -544,20 +805,27 @@ export function RodapeDaEscrita({ editor }: { editor: Editor }) {
         <span>
           <b>{nArtes}</b> {nArtes === 1 ? 'arte' : 'artes'}
         </span>
-        {/* os atalhos à vista; os próximos tickets acrescentam os deles (comentar, #192) */}
+        {/* os atalhos à vista: em leitura (quem só lê, o envio aberto pela Pauta), só os que valem nela; o comentar, para
+            quem pode comentar */}
         <span className="dir atalhos-da-escrita">
-          <span>
-            <kbd>/</kbd> comandos
-          </span>
-          <span>
-            <kbd>Tab</kbd> confirma ou troca o tipo
-          </span>
-          <span>
-            <kbd>{atalho('Mod-u')}</kbd> arte
-          </span>
-          <span>
-            <kbd>{ATALHO_DE_COMENTAR}</kbd> comenta
-          </span>
+          {escreve && (
+            <>
+              <span>
+                <kbd>/</kbd> comandos
+              </span>
+              <span>
+                <kbd>Tab</kbd> confirma ou troca o tipo
+              </span>
+              <span>
+                <kbd>{atalho('Mod-u')}</kbd> arte
+              </span>
+            </>
+          )}
+          {comenta && (
+            <span>
+              <kbd>{ATALHO_DE_COMENTAR}</kbd> comenta
+            </span>
+          )}
           <span>
             <kbd>{atalho('Mod-Shift-l')}</kbd> limpo
           </span>
@@ -566,7 +834,7 @@ export function RodapeDaEscrita({ editor }: { editor: Editor }) {
           </span>
         </span>
       </footer>
-      <Atalhos tela="escrita" />
+      <Atalhos tela={escreve ? 'escrita' : 'leitura'} comenta={comenta} />
     </>
   );
 }

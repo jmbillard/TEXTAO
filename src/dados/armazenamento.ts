@@ -10,6 +10,7 @@ import { manterAsDuas, substituirVersao } from '../modelo/versoes';
 import type { EventoDaLinha, ProducaoDaLinha } from '../modelo/linhaDoTempo';
 import type { Versao as VersaoDaChamada } from '../modelo/pauta';
 import { CHAVE_DO_CODIGO_DAS_VERSOES, mostraOCodigoDasVersoes, type VersoesDaChamada } from '../modelo/versoesDoRoteiro';
+import { CHAVE_DA_LISTA_DE_ARTES, listaDeArtesRecolhida } from '../modelo/listaDeArtes';
 import { registrarCores } from './colaboracao';
 import { comExemplo, ehDoTour } from '../tour/exemplo';
 import type { AvisosDaImportacao, Escolhas, LinhaDaImportacao, LinhaDoAcervo, PlacarDaImportacao, RegraLembrada } from '../../servidor/importacao-do-acervo.mjs';
@@ -1089,12 +1090,27 @@ export const codigoDasVersoesLigado = (): boolean => mostraOCodigoDasVersoes(min
     guarda, por pessoa, para qualquer aparelho. Devolve se ficou guardada. */
 export async function lembrarCodigoDasVersoes(ligado: boolean): Promise<boolean> {
   if (codigoDasVersoesLigado() === ligado) return true;
-  const guardou = guardarPreferencia(CHAVE_DO_CODIGO_DAS_VERSOES, ligado);
+  return guardarEAvisar(CHAVE_DO_CODIGO_DAS_VERSOES, ligado);
+}
+
+/** Guarda a preferência que mais de uma tela mostra e avisa quem assinou: na hora e de novo quando o servidor responde
+    (a que não ficou guardada pode ter voltado à de antes). */
+async function guardarEAvisar(chave: string, valor: unknown): Promise<boolean> {
+  const guardou = guardarPreferencia(chave, valor);
   avisarDasPreferencias();
   const ok = await guardou;
-  // a que não ficou guardada pode ter voltado à de antes
   avisarDasPreferencias();
   return ok;
+}
+
+/** A lista das artes ao lado do texto recolhida (a da folha de escrita e a da revisão, a mesma escolha). */
+export const artesRecolhidas = (): boolean => listaDeArtesRecolhida(minhasPreferencias);
+
+/** A pessoa recolheu ou abriu a lista das artes: vale na hora, nas duas telas, e o servidor guarda, por pessoa, para
+    qualquer aparelho. Devolve se ficou guardada. */
+export async function lembrarArtesRecolhidas(recolhida: boolean): Promise<boolean> {
+  if (artesRecolhidas() === recolhida) return true;
+  return guardarEAvisar(CHAVE_DA_LISTA_DE_ARTES, recolhida);
 }
 
 /** "Meus roteiros" do Redator ou do Editor: os roteiros em que a pessoa é o redator (ou o editor), pelo nome do
@@ -1143,6 +1159,15 @@ export interface EnviosDoEscrito {
   fila: { id: string; claquete: string; trello?: { estado: EnvioTrello['estado']; url?: string }; designers: string[]; andamento: { id: 'entrada' | 'produzindo' | 'entregue'; nome: string; situacao: 'feito' | 'agora' | 'depois'; quando: string | null }[] } | null;
 }
 export const lerEnviosDoEscrito = (id: string) => pedir<EnviosDoEscrito>(`/api/roteiros-escritos/${encodeURIComponent(id)}/envios`);
+/** O último envio do Roteiro escrito no PROMeiro, como a edição lê pela Pauta (#197): o envio, o roteiro com o texto da
+    foto (não o texto vivo), se a pessoa comenta (lê o escrito) e se ela escreve nele. */
+export interface UltimoEnvio {
+  envio: EnvioDoEscrito;
+  roteiro: Roteiro;
+  comenta: boolean;
+  escreve: boolean;
+}
+export const lerUltimoEnvio = (id: string) => pedir<UltimoEnvio>(`/api/roteiros-escritos/${encodeURIComponent(id)}/ultimo-envio`);
 /** O que o Enviar devolve: a cópia do envio que entrou na fila, o envio e o escrito como ficou. */
 export interface EnvioFeito {
   copia: Roteiro;

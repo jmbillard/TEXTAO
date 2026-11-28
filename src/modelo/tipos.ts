@@ -54,7 +54,7 @@ export const ETIQUETAS: { id: TipoEtiqueta; nome: string; rotulo: string; atalho
   { id: 'sonoplastia', nome: 'Sonoplastia', rotulo: 'sonoplastia', atalho: 'Mod-Shift-3' },
   { id: 'cortavel', nome: 'Pode cortar', rotulo: 'cortável', atalho: 'Mod-Shift-4' },
   { id: 'producao', nome: 'Nota de produção', rotulo: 'produção', atalho: 'Mod-Shift-5' },
-  { id: 'comentario', nome: 'Transformar em comentário', rotulo: 'comentário', atalho: 'Mod-Shift-m' },
+  { id: 'comentario', nome: 'Transformar em recado', rotulo: 'recado', atalho: 'Mod-Shift-m' },
 ];
 
 export const nomeSubtipo = (s: string) => SUBTIPOS_ARTE.find((x) => x.id === s)?.nome ?? 'Sem tipo';

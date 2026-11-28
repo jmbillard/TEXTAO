@@ -840,6 +840,38 @@ kbd {
 .cab-artes { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .cab-artes b { font: 400 20px/1 var(--serifa); }
 .cab-artes b i { font-style: italic; color: var(--ultra); }
+
+/* a lista das artes que recolhe (`ArtesQueRecolhem`, a da revisão e a da folha de escrita): o cabeçalho recolhe e abre;
+   o corpo dobra (as linhas da grade de 1fr a 0fr, a dobra do "Para revisar" do celular) e o cartão vira a pílula com o
+   número, encolhendo até ela. Sem nada em cima dele (o "Para revisar"), ele vira pílula; com, só o corpo dobra. */
+.artes-que-recolhem {
+  --dobra: 0.36s; interpolate-size: allow-keywords; width: 100%; margin-left: auto;
+  transition: width var(--dobra) var(--suave), padding var(--dobra) var(--suave), border-radius var(--dobra) var(--suave), background-color var(--rapido) var(--suave);
+}
+.cab-que-recolhe { width: 100%; align-items: center; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: margin var(--dobra) var(--suave); }
+.cab-que-recolhe b { flex: none; white-space: nowrap; transition: font-size var(--dobra) var(--suave); }
+.cab-que-recolhe .cab-extra { flex: 1; min-width: 0; display: flex; justify-content: flex-end; gap: 8px; overflow: hidden; white-space: nowrap; transition: opacity var(--medio) var(--suave); }
+.cab-que-recolhe .chev { flex: none; display: grid; place-items: center; width: 24px; height: 24px; margin: -2px -4px -2px 0; border-radius: 7px; color: var(--tinta3); transition: color var(--rapido) var(--suave), background-color var(--rapido) var(--suave); }
+.cab-que-recolhe .chev svg { transform: rotate(180deg); transition: transform var(--dobra) var(--suave); }
+.cab-que-recolhe:hover .chev { color: var(--tinta); background: var(--neutro); }
+.cab-que-recolhe:focus-visible { outline: 2px solid var(--ultra); outline-offset: 4px; border-radius: 6px; }
+/* o corpo não pesa na largura (a pílula encolhe até o número), e o realce das linhas vai de ponta a ponta do cartão */
+.artes-dobra { display: grid; grid-template-rows: 1fr; opacity: 1; contain: inline-size; transition: grid-template-rows var(--dobra) var(--suave), opacity var(--medio) var(--suave), visibility 0s; }
+.artes-dobra > div { min-height: 0; overflow: hidden; margin-inline: -16px; padding-inline: 16px; }
+.artes-que-recolhem[data-recolhida] .artes-dobra { grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows var(--dobra) var(--suave), opacity var(--rapido) var(--suave), visibility 0s var(--dobra); }
+.artes-que-recolhem[data-recolhida] .cab-que-recolhe { margin-bottom: 0; }
+.artes-que-recolhem[data-recolhida] .cab-extra { opacity: 0; }
+.artes-que-recolhem[data-recolhida] .chev svg { transform: none; }
+/* a pílula */
+.artes-que-recolhem[data-recolhida]:not(.com-antes) { width: max-content; padding: 7px 10px 7px 15px; border-radius: 999px; cursor: pointer; }
+.artes-que-recolhem[data-recolhida]:not(.com-antes) .cab-que-recolhe { gap: 8px; }
+.artes-que-recolhem[data-recolhida]:not(.com-antes) .cab-que-recolhe b { font-size: 16px; }
+.artes-que-recolhem[data-recolhida]:not(.com-antes) .cab-extra { flex: 0 1 0; }
+.artes-que-recolhem[data-recolhida]:not(.com-antes):hover { background: color-mix(in srgb, var(--papel) 60%, var(--neutro)); }
+.artes-que-recolhem[data-recolhida]:not(.com-antes):hover .chev { background: none; }
+@media (prefers-reduced-motion: reduce) {
+  .artes-que-recolhem, .cab-que-recolhe, .cab-que-recolhe b, .cab-que-recolhe .chev svg, .artes-dobra, .artes-que-recolhem[data-recolhida] .artes-dobra { transition: none; }
+}
 .artes { display: flex; flex-direction: column; list-style: none; margin: 0; padding: 0; }
 .artes li { display: flex; flex-wrap: wrap; align-items: center; gap: 11px; padding: 7px 6px; border-radius: 10px; min-width: 0; }
 .artes li + li { box-shadow: 0 -1px 0 var(--regua); }

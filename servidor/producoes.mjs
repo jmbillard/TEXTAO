@@ -328,7 +328,11 @@ export function criarProducoes(db) {
     // a pauta da edição (#96): as que entraram desde a data (e as sem data de entrada)
     // as Produções com card no Trello (#199): a lista de claquetes do Montar a pauta diz de onde cada uma veio
     comCard: db.prepare('SELECT id FROM producoes WHERE card_id IS NOT NULL AND (entrada_em IS NULL OR entrada_em >= ?)'),
-    daPauta: db.prepare('SELECT p.id, p.claquete, p.praca, p.etapa, p.designers, p.artes, p.artes_novas, p.artes_apagadas, p.artes_quantidade, p.prioridade, p.entrada_em, p.entrega_em, r.meta AS roteiro_meta FROM producoes p LEFT JOIN roteiros r ON r.id = p.roteiro_id WHERE p.entrada_em IS NULL OR p.entrada_em >= ?'),
+    daPauta: db.prepare(`SELECT p.id, p.claquete, p.praca, p.etapa, p.designers, p.artes, p.artes_novas, p.artes_apagadas, p.artes_quantidade, p.prioridade, p.entrada_em, p.entrega_em, r.meta AS roteiro_meta,
+       -- o Roteiro escrito no PROMeiro (#197): o da cópia ligada; sem ela (a anterior saiu no reenvio e a carga ainda
+       -- não religou), o da cópia mais nova enviada ao card
+       COALESCE(r.escrito_de, (SELECT r2.escrito_de FROM envios e2 JOIN roteiros r2 ON r2.id = e2.roteiro_id WHERE p.card_id IS NOT NULL AND e2.card_id = p.card_id AND r2.escrito_de IS NOT NULL ORDER BY e2.em DESC LIMIT 1)) AS escrito_de
+       FROM producoes p LEFT JOIN roteiros r ON r.id = p.roteiro_id WHERE p.entrada_em IS NULL OR p.entrada_em >= ?`),
     // a carga adota a Produção que o aviso do Trello criou para o card (ainda sem o registro do Teable): não duplica
     adotar: db.prepare(
       `UPDATE producoes SET teable_registro = ? WHERE id = (SELECT id FROM producoes WHERE card_id = ? AND teable_registro IS NULL ORDER BY criada_em LIMIT 1)`,
@@ -910,6 +914,7 @@ export function criarProducoes(db) {
         entradaEm: l.entrada_em ?? null,
         entregaEm: l.entrega_em ?? null,
         ...comALetraEVersao(l),
+        ...(l.escrito_de ? { escrito: l.escrito_de } : {}),
       };
     });
   }

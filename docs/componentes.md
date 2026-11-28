@@ -26,6 +26,7 @@ as durações `--rapido` (0.15s) e `--medio` (0.2s) e o respeito ao `prefers-red
 | `useDeslize` | `vagas.tsx` | O FLIP dos `[data-card]`: o que muda de lugar desliza até o lugar novo. | Quando a disposição muda (ordem, coluna). Não serve para a troca de semana (aí é a troca). |
 | `CASCATA_MS` | `cena.tsx` | O passo da cascata de entrada e quantos entram nela. | Toda lista ou coluna que chega em cascata. |
 | `useSaida` | `pecas.tsx` | Mantém na tela, por um tempo, o item que saiu da lista, enquanto ele recolhe. | Quando um item sai e não pode sumir de estalo. |
+| `ArtesQueRecolhem` | `ArtesQueRecolhem.tsx` | A lista das artes ao lado do texto, que recolhe: o cabeçalho "N artes" (e o Ctrl+Alt+A) recolhe e abre; o corpo dobra como a dobra do "Para revisar" do celular, e o cartão vira a pílula com o número (com `antes`, o "Para revisar" fica e só o corpo dobra). A escolha é uma só para as telas, por pessoa, nas preferências (`artes.recolhida`). | A lista das artes da revisão e a da folha de escrita (lá, a coluna encolhe e a folha ganha o espaço). |
 | `MenuDeContexto` | `MenuDeContexto.tsx` | O menu do clique direito, no ponto do clique, sempre dentro da janela. | Qualquer menu de contexto. |
 
 ## Busca
@@ -109,3 +110,10 @@ O e2e confere com `lugarDaLupa`, de `tests/e2e/coerencia.cjs`. Os Cadastros têm
 | `Marca` | `pecas.tsx` | A marca do app. | O topo. |
 | `criarPalco`, `FraseAMao` | `cena.tsx` | O palco das cenas (anima, marca prazos, desfaz tudo e para sozinho com o movimento reduzido) e a frase à mão com o risco. | As cenas: a fila zerada e a comemoração. |
 | `Icone` | `icones.tsx` | Os ícones de traço fino. | Todo ícone. O `certo` (✓) só marca a opção escolhida. |
+
+## Celular
+
+| Peça | Onde mora | O que é | Quando usar |
+|---|---|---|---|
+| `useTecladoNaTela` | `tecladoNaTela.ts` | Acompanha o teclado do celular pelo `visualViewport`: devolve a altura e a põe no `--teclado` da página (e `--altura-visivel`, `data-teclado="aberto"`). | O que fica no pé da tela e precisa subir com o teclado: a barra do polegar e a folha de baixo do comentário (#198). |
+| `BarraDoPolegar` | `EscritaNaFolha.tsx` | A escrita no pé da tela, no lugar da margem dos tipos: os tipos (o do cursor aceso, com o "?" do palpite), o "/", a Arte e o Enviar; com seleção, o Comentar. Os toques não tiram o foco do texto. Quem só lê tem só o Comentar. | A folha de escrita no celular (#198). |
