@@ -1779,6 +1779,8 @@ a.ficha-marca.trello { text-decoration: none; }
 .semana-nav b .p-mes.apagado, .pauta-periodo .p-mes.apagado { opacity: 0; transition: opacity 60ms ease-out; }
 /* o "voltar para hoje" do computador abre a vaga entre os links: em flex, a largura medida inclui o espaço depois dele */
 .semana-nav .ct-voltar { display: inline-flex; }
+/* o "voltar para hoje" (VoltarParaHoje) numa linha só, em toda tela */
+.voltar-hoje { white-space: nowrap; }
 /* no computador, as colunas ficam no lugar quando a semana troca (ui/trocaDeSemana.ts): o destaque de hoje (o fundo,
    o contorno, a cor e o espaço do círculo) chega e sai suave, em vez de pular de coluna */
 @media (min-width: 601px) {
