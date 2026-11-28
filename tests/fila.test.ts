@@ -667,6 +667,13 @@ describe('No Trello no celular: a faixa de dias', () => {
     expect(periodoCurto('2026-12-01', '2026-12-02')).toBe('1 – 2/12');
   });
 
+  it('o período por extenso é um só em todas as telas (#171): a agenda, a Pauta e a agenda de filmes', async () => {
+    const { periodoPorExtenso } = await import('../src/ui/fila');
+    expect(periodoPorExtenso('2026-11-23', '2026-11-29')).toBe('23 – 29 de novembro');
+    expect(periodoPorExtenso('2026-11-30', '2026-12-06')).toBe('30 de novembro – 6 de dezembro');
+    expect(periodoPorExtenso('2026-12-28', '2027-01-03')).toBe('28 de dezembro – 3 de janeiro');
+  });
+
   it('o contador vai do valor antigo ao novo sempre em inteiros, rápido no começo e devagar no fim', async () => {
     const { valorNaContagem } = await import('../src/ui/fila');
     expect(valorNaContagem(0, 4, 0)).toBe(0);

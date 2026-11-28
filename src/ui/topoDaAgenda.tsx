@@ -315,9 +315,10 @@ export function PeriodoQueConta({ isos, k }: { isos: string[]; k: number }) {
     a virada e o mês da esquerda, que abre ou fecha a vaga. A largura: "fixa" é a do maior período do celular, para as
     setas nunca se mexerem; "suave" (o computador, onde o período é por extenso e varia muito) acompanha o texto, e o
     que muda de uma vez (um algarismo a mais, o nome do mês) não empurra as setas de estalo: elas andam até o lugar.
-    A Pauta (#170) escreve "16 a 22 de novembro" (`entre`) e, no Dia, um dia só, com o dia da semana (`semana`: "sexta,
+    O período é um só em todas as telas ("16 – 22 de novembro", fila.ts: periodoPorExtenso, #171); a Pauta (#170), no
+    Dia, escreve um dia só, com o dia da semana (`semana`: "sexta,
     27 de novembro"; os dois lados do período são o mesmo dia). */
-export function Periodo({ dia1, mes1, dia2, mes2, mesesApagados, largura, entre = ' – ', semana }: PartesDoPeriodo & { mesesApagados: boolean; largura: 'fixa' | 'suave'; entre?: string; semana?: string }) {
+export function Periodo({ dia1, mes1, dia2, mes2, mesesApagados, largura, semana }: PartesDoPeriodo & { mesesApagados: boolean; largura: 'fixa' | 'suave'; semana?: string }) {
   const el = useRef<HTMLElement>(null);
   const [fixa, setFixa] = useState<number>();
   useLayoutEffect(() => {
@@ -369,7 +370,7 @@ export function Periodo({ dia1, mes1, dia2, mes2, mesesApagados, largura, entre 
           <ItemQueAbre ver={!!mes1} classe="p-m1">
             <span className={`p-mes${apagado}`}>{mes1}</span>
           </ItemQueAbre>
-          {entre}
+          {' – '}
         </>
       )}
       <span className="p-dia p-d2">{dia2}</span>
@@ -415,6 +416,18 @@ export function TopoDoDia({ d, numero = d.numero, marcas = true, escrever: escre
       </div>
     </div>
   );
+}
+
+/** Para que lado o tempo andou na última troca (1 para a frente, -1 para trás): o `sentido` do VoltarParaHoje nas telas
+    que andam por um valor que se compara (o dia ou a segunda-feira em ISO, a Pauta e o Montar a pauta). */
+export function useSentidoDaTroca(valor: string): 1 | -1 {
+  const antes = useRef(valor);
+  const sentido = useRef<1 | -1>(1);
+  if (valor !== antes.current) {
+    sentido.current = valor > antes.current ? 1 : -1;
+    antes.current = valor;
+  }
+  return sentido.current;
 }
 
 /** O "voltar para hoje", com o lugar guardado: entra e sai deslizando 10px no sentido em que a agenda andou

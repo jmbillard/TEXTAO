@@ -22,14 +22,14 @@ import { ColarDaPlanilha, type ColadoParaAplicar } from './ColarDaPlanilha';
 import { LadoALado } from './LadoALado';
 import { DiaVazio, textoDoRepetido } from './DiaVazio';
 import type { DeOndeRepetir } from '../modelo/repetir';
-import { DIAS_DA_SEMANA, MESES, partes } from './pecasDaPauta';
+import { DIAS_DA_SEMANA, partes } from './pecasDaPauta';
 import { campoDoElemento, MarcasDosOutros, QuemMaisEsta, useSalaDoDia } from './JuntosNoDia';
 import { juntarODia } from '../modelo/juntarODia';
 import type { Pessoa } from '../modelo/tipos';
 import './pauta.css';
 import './montarPauta.css';
-import { SUAVE, TROCA_ENTRA_MS } from './topoDaAgenda';
-import { semMovimento } from './util';
+import { SUAVE, TROCA_ENTRA_MS, useSentidoDaTroca, VoltarParaHoje } from './topoDaAgenda';
+import { dataPorExtenso, semMovimento } from './util';
 
 /* Montar a pauta (#123): a tela em que a coordenação monta o rascunho do dia, numa grade parecida com a planilha
    (a alternativa A do protótipo aprovado). Abas com os dias da semana, cada uma com o estado do dia (vazio ou
@@ -85,12 +85,8 @@ const avisoVazio = () => ({ id: novoId('a'), texto: '' });
 /** Toda posição mostra ao menos uma linha de demanda, para digitar; a vazia não é gravada. */
 const comLinha = (p: PosicaoDaEscala): PosicaoDaEscala => (p.demandas.length ? p : { ...p, demandas: [linhaVazia()] });
 
-/** "sexta, 27 de novembro". */
-function diaEscrito(iso: string) {
-  const p = partes(iso);
-  const semana = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][p.semana];
-  return `${semana}, ${p.dia} de ${MESES[p.mes]}`;
-}
+/** "sexta, 27 de novembro": o dia por extenso de todas as telas (util.ts). */
+const diaEscrito = dataPorExtenso;
 /** "hoje", "amanhã", "ontem" ou ''. */
 function perto(iso: string, hoje: string) {
   return iso === hoje ? 'hoje' : iso === diaVizinho(hoje, 1) ? 'amanhã' : iso === diaVizinho(hoje, -1) ? 'ontem' : '';
@@ -809,6 +805,7 @@ function RecadoDoDia({ texto, mudar }: { texto: string; mudar: (t: string) => vo
 /** As abas com os dias da semana, cada uma com o estado do dia, e a troca de semana. */
 function AbasDaSemana({ dados, hoje, irPara }: { dados: DiaDaEscala; hoje: string; irPara: (dia: string) => void }) {
   const abas = useRef<HTMLElement>(null);
+  const sentido = useSentidoDaTroca(dados.dia);
   // no celular as abas rolam para o lado: a do dia aparece (sem mexer na rolagem da página)
   useLayoutEffect(() => {
     const nav = abas.current;
@@ -817,6 +814,8 @@ function AbasDaSemana({ dados, hoje, irPara }: { dados: DiaDaEscala; hoje: strin
   }, [dados.dia]);
   return (
     <nav className="montar-abas" aria-label="Dias da semana" ref={abas}>
+      {/* o "voltar para hoje" da agenda (#171): aparece quando a semana à vista não tem o dia de hoje */}
+      <VoltarParaHoje ver={!dados.semana.some((s) => s.dia === hoje)} sentido={sentido} voltar={() => irPara(hoje)} abreVaga />
       <button type="button" className="botao-icone" aria-label="Semana anterior" title="Semana anterior (←)" onClick={() => irPara(diaVizinho(dados.dia, -7))}>
         <Icone nome="voltar" tam={15} traco={2.2} />
       </button>

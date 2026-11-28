@@ -3,7 +3,8 @@ import { NomeComVersoes } from './CodigoDasVersoes';
 import { horarioNoPadrao, lerDemanda, type DiaDaEscala, type PosicaoDaEscala, type PublicacaoDoDia } from '../modelo/escala';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { diaVizinho } from '../modelo/pauta';
-import { MESES, partes } from './pecasDaPauta';
+import { partes } from './pecasDaPauta';
+import { dataPorExtenso } from './util';
 import './conferirPauta.css';
 import { Vazio } from './pecas';
 
@@ -27,11 +28,6 @@ function NoTeable({ dados }: { dados: DiaDaEscala }) {
   );
 }
 
-/** "sexta, 27 de novembro". */
-export function diaPorExtenso(iso: string) {
-  const p = partes(iso);
-  return `${['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][p.semana]}, ${p.dia} de ${MESES[p.mes]}`;
-}
 const diaMes = (iso: string) => `${partes(iso).dia}/${partes(iso).mes + 1}`;
 /** "18h42", no horário de São Paulo. */
 const hora = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).replace(':', 'h');
@@ -104,7 +100,7 @@ export function ConferirODia({ dados, posicoes, recado, hoje, publicando, erro, 
       <div className="pauta-cabeca">
         <div>
           <h1>Conferir antes de publicar</h1>
-          <p className="pauta-sub">{diaPorExtenso(dados.dia)}</p>
+          <p className="pauta-sub">{dataPorExtenso(dados.dia)}</p>
         </div>
       </div>
       <div className="conf-placar">
@@ -169,7 +165,7 @@ export function DiaPublicado({ dados, posicoes, recado, voltar, desfazer, irPara
     <div className="publicada">
       <div className="pub-cabeca">
         <span className="pub-carimbo">publicada!</span>
-        <h1>A pauta de {diaPorExtenso(dados.dia)} está no ar</h1>
+        <h1>A pauta de {dataPorExtenso(dados.dia)} está no ar</h1>
         {pub && <p className="pauta-sub">às {hora(pub.em)} · os editores já veem na Pauta da edição</p>}
         <NoTeable dados={dados} />
       </div>
@@ -186,7 +182,7 @@ export function DiaPublicado({ dados, posicoes, recado, voltar, desfazer, irPara
           Desfazer
         </button>
         <button type="button" className="botao primario" onClick={() => irPara(proximo)}>
-          Montar {diaPorExtenso(proximo).split(',')[0]}, {diaMes(proximo)} →
+          Montar {dataPorExtenso(proximo).split(',')[0]}, {diaMes(proximo)} →
         </button>
       </div>
       {recado.trim() && (

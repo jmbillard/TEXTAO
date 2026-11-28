@@ -385,6 +385,13 @@ export function periodoCurto(de: string, ate: string): string {
   return `${dia1}${mes1} – ${dia2}${mes2}`;
 }
 
+/** O período por extenso, o de todas as telas com navegação por semana (a agenda, a Pauta, a agenda de filmes, #171):
+    "23 – 29 de novembro", "30 de novembro – 6 de dezembro". É o texto que o Periodo desenha no computador. */
+export function periodoPorExtenso(de: string, ate: string): string {
+  const { dia1, mes1, dia2, mes2 } = partesDoPeriodo(de, ate, mesPorExtenso);
+  return `${dia1}${mes1} – ${dia2}${mes2}`;
+}
+
 /** Onde o período conta: o dia (ISO) de cada posição, quantos dias o período cobre e como o mês se escreve. No celular,
     as posições são os dias da faixa e o período tem dois dias ("25 – 26/11"); no computador, são os dias contados de
     hoje (inicioDaSemana) e o período tem sete ("24 – 30 de novembro"). Os dias contam pelas datas nos dois. */

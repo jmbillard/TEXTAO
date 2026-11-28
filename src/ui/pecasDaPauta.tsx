@@ -6,6 +6,7 @@ import { CardAberto, FecharOCardAberto } from './CardAberto';
 import { MenuDeContexto } from './MenuDeContexto';
 import { LER_ANDAMENTO_MS } from './fila';
 import { Icone } from './icones';
+import { dataPorExtenso } from './util';
 import { BalaoDeInfo } from './BalaoDeInfo';
 import { BolinhaDeEstado, MarcaTexto, tracoDe } from './pecas';
 import { NumeroQueConta, useEsmaeceAoMudar } from './topoDaAgenda';
@@ -243,11 +244,6 @@ export function diaEscrito(iso: string) {
   return `${DIAS_DA_SEMANA[p.semana]}, ${String(p.dia).padStart(2, '0')}/${String(p.mes + 1).padStart(2, '0')}`;
 }
 export const DIAS_POR_EXTENSO = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
-/** "sexta, 27 de novembro". */
-export function diaPorExtenso(iso: string) {
-  const p = partes(iso);
-  return `${DIAS_POR_EXTENSO[p.semana]}, ${p.dia} de ${MESES[p.mes]}`;
-}
 /** "24/11 21:46", no fuso de São Paulo. */
 const instanteEscrito = (iso: string) => new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '');
 const vizinho = (iso: string, n: number) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
@@ -305,7 +301,7 @@ export function FichaDaClaquete({ linha: daPauta, linhas: todas, hoje, voce, pel
     <div className="pauta-ficha">
       <div className="pauta-ficha-topo">
         <span className="rotulo">
-          Claquete · {diaPorExtenso(daPauta.dia)}
+          Claquete · {dataPorExtenso(daPauta.dia)}
           {rel && <span className="pauta-ficha-rel"> {rel}</span>}
         </span>
         <FecharOCardAberto rotulo="Fechar a ficha" />

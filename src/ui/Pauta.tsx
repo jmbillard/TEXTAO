@@ -10,10 +10,10 @@ import { Icone } from './icones';
 import { ListaDaPauta, MesaDaPauta, RecadoDoDia } from './MesaDaPauta';
 import { ColunasDoDia, FitaDosDias } from './PautaDoDia';
 import { Marca, NadaNaBusca, NumeroCirculado, useSaida, Vazio, VoceAMao } from './pecas';
-import { posicaoNaContagem } from './fila';
-import { escrever, Periodo, useContagemDoPeriodo, useEsmaeceAoMudar } from './topoDaAgenda';
-import { semMovimento } from './util';
-import { Avisos, ClaqueteAberta, DIAS_DA_SEMANA, MESES, SobreALeitura, VisaoDaPauta, diaEscrito, diaPorExtenso, hashDaPauta, partes, relativoA, turnoEscrito, useReleitura, type AbrirClaquete, type ClaqueteNaTela, type EnderecoDaPauta } from './pecasDaPauta';
+import { periodoPorExtenso, posicaoNaContagem } from './fila';
+import { escrever, Periodo, useContagemDoPeriodo, useEsmaeceAoMudar, useSentidoDaTroca, VoltarParaHoje } from './topoDaAgenda';
+import { dataPorExtenso, semMovimento } from './util';
+import { Avisos, ClaqueteAberta, DIAS_DA_SEMANA, SobreALeitura, VisaoDaPauta, diaEscrito, hashDaPauta, partes, relativoA, turnoEscrito, useReleitura, type AbrirClaquete, type ClaqueteNaTela, type EnderecoDaPauta } from './pecasDaPauta';
 import { diaDoNumero, EIXO_DA_SEMANA, EIXO_DO_DIA, numeroDoDia, periodoDaPautaNaContagem, SemanaQueConta, useDiaQueConta, useTrocaDaPauta } from './trocaDaPauta';
 import './pauta.css';
 
@@ -39,12 +39,6 @@ interface Props extends EnderecoDaPauta {
 
 type Semana = SemanaDaPauta & LeituraDaPauta;
 
-/** "23 a 29 de novembro", "30 de novembro a 6 de dezembro". */
-function periodoEscrito(dias: string[]) {
-  const a = partes(dias[0]);
-  const b = partes(dias[dias.length - 1]);
-  return a.mes === b.mes ? `${a.dia} a ${b.dia} de ${MESES[b.mes]}` : `${a.dia} de ${MESES[a.mes]} a ${b.dia} de ${MESES[b.mes]}`;
-}
 
 /** A semana na tela conta até `segunda` (SemanaQueConta): o período da Semana, os números do cabeçalho da grade e os
     da fita do Dia contam juntos, como o período e os dias da agenda no computador (#170). Só quem lê a contagem
@@ -70,10 +64,10 @@ function PeriodoDaPauta({ visao, dia }: { visao: 'semana' | 'dia'; dia: string }
   return (
     <>
       <span ref={el} className="pauta-periodo" aria-hidden="true">
-        <Periodo {...periodoDaPautaNaContagem(visao, c.de, c.para, c.p)} largura="suave" entre=" a " />
+        <Periodo {...periodoDaPautaNaContagem(visao, c.de, c.para, c.p)} largura="suave" />
       </span>
       <span className="pauta-leitor" aria-live="polite">
-        {visao === 'dia' ? diaPorExtenso(dia) : periodoEscrito(diasDaSemana(dia))}
+        {visao === 'dia' ? dataPorExtenso(dia) : periodoPorExtenso(diasDaSemana(dia)[0], diasDaSemana(dia)[6])}
       </span>
     </>
   );
@@ -396,6 +390,7 @@ export function Pauta({ semana, dia, irPara, voltar, topo }: Props) {
   // a busca e a ficha olham a pauta lida: a semana à vista e as vizinhas
   const lidas = useMemo(() => [-1, 0, 1].flatMap((n) => semanas[semanaVizinha(segunda, n)]?.linhas ?? []), [semanas, segunda]);
   const ehHoje = visao === 'dia' ? qual === hoje : segunda === desta;
+  const sentido = useSentidoDaTroca(qual);
   return (
     <div className="pagina pauta">
       {/* a linha do logo da fila, parada entre as telas (#159); sem ela, a volta para a fila */}
@@ -419,9 +414,8 @@ export function Pauta({ semana, dia, irPara, voltar, topo }: Props) {
               {/* a lupa no lugar de todas (#171): a última ferramenta, logo antes da navegação do tempo */}
               <BuscaNaLupa className="lupa-da-cabeca" valor={busca} mudar={setBusca} ativa={!aberta} dica="Buscar claquete, atração ou editor" rotulo="Buscar na pauta" />
               <nav className="pauta-nav nav-do-tempo" aria-label={visao === 'dia' ? 'Dia' : 'Semana'}>
-                <button type="button" className="botao pauta-hoje" disabled={ehHoje} onClick={() => irPara(visao === 'dia' ? { dia: '' } : {})}>
-                  Hoje
-                </button>
+                {/* o "voltar para hoje" da agenda (#171): aparece quando o dia ou a semana não é o de hoje */}
+                <VoltarParaHoje ver={!ehHoje} sentido={sentido} voltar={() => irPara(visao === 'dia' ? { dia: '' } : {})} abreVaga />
                 <button type="button" className="botao-icone" aria-label={visao === 'dia' ? 'Dia anterior' : 'Semana anterior'} title={`${visao === 'dia' ? 'Dia anterior' : 'Semana anterior'} (←)`} onClick={() => ir(-1)}>
                   <Icone nome="voltar" tam={16} traco={2.2} />
                 </button>

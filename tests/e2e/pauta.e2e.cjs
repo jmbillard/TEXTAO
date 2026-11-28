@@ -26,6 +26,7 @@ const assert = require('node:assert/strict');
 const { mkdirSync } = require('node:fs');
 const { join } = require('node:path');
 const { subir } = require('./tour.e2e.cjs');
+const { checksVerdes, lugarDaLupa } = require('./coerencia.cjs');
 const RAIZ = join(__dirname, '..', '..');
 
 let chromium, devices;
@@ -347,6 +348,12 @@ async function noComputador(navegador, url, tema) {
   await fechou(p);
 
   // a busca: por claquete, atração e editor, na semana à vista e nas vizinhas; Esc limpa
+  // a coerência entre as telas (#171): a lupa no lugar de todas e nenhum check verde de estado
+  {
+    const lugar = await lugarDaLupa(p);
+    assert.ok(lugar.ok, `a Pauta: a lupa na ponta da linha do título (${JSON.stringify(lugar)})`);
+    assert.deepEqual(await checksVerdes(p), [], 'a Pauta: nenhum check verde de estado');
+  }
   await p.keyboard.press('/');
   await p.keyboard.type('esporte antigo');
   const achados = p.locator('.pauta-achados');
@@ -381,17 +388,18 @@ async function noComputador(navegador, url, tema) {
   assert.equal(hash(p), `#/pauta/semana/${anterior}`);
   assert.deepEqual(await textos(p.locator('.pauta-grade .pauta-item .pauta-texto')), [`Esporte Antigo ${diaMes(mais(anterior, 3))}`]);
   assert.equal(await p.locator('th.pauta-dia.hoje').count(), 0);
-  assert.equal(await p.locator('.pauta-hoje').isEnabled(), true);
+  // o "voltar para hoje" da agenda (#171): aparece fora da semana de hoje
+  await p.locator('.pauta-nav .voltar-hoje:not(.fora)').waitFor();
   await p.getByRole('button', { name: 'Próxima semana' }).click();
   await p.locator(`th.pauta-dia[data-dia="${segunda}"]`).waitFor();
   assert.equal(hash(p), '#/pauta');
-  assert.equal(await p.locator('.pauta-hoje').isEnabled(), false, 'Hoje: já na semana de hoje');
+  await p.locator('.pauta-nav .voltar-hoje:not(.fora)').waitFor({ state: 'detached' });
   // a próxima semana ainda sem pauta: diz que não há nada
   await p.keyboard.press('ArrowRight');
   await p.locator('.pauta-vazia').waitFor();
   assert.equal(hash(p), `#/pauta/semana/${proxima}`);
-  // "Hoje" volta para a de hoje
-  await p.locator('.pauta-hoje').click();
+  // o "voltar para hoje" volta para a de hoje
+  await p.locator('.pauta-nav .voltar-hoje').click();
   await p.locator(`th.pauta-dia[data-dia="${segunda}"]`).waitFor();
   // o voltar do navegador
   await p.goBack();
@@ -765,7 +773,7 @@ async function oDia(navegador, url, tema, teable, api) {
   await p.locator(`.pauta-fita button[data-dia="${segunda}"]`).click();
   await p.locator('.pauta-periodo', { hasText: porExtenso(segunda) }).waitFor();
   assert.equal(hash(p), `#/pauta/dia/${segunda}`);
-  await p.locator('.pauta-hoje').click();
+  await p.locator('.pauta-nav .voltar-hoje').click();
   await p.locator('.pauta-periodo', { hasText: porExtenso(hoje) }).waitFor();
 
   // o endereço do Dia aberto direto (e recarregado); o dia sem pauta diz que não há nada
@@ -1022,7 +1030,7 @@ async function oMovimento(navegador, url) {
   await p.getByRole('button', { name: 'Semana anterior' }).click();
   await p.locator(`th.pauta-dia[data-dia="${anterior}"]`).waitFor();
   await devagar(700);
-  await p.locator('.pauta-hoje').click();
+  await p.locator('.pauta-nav .voltar-hoje').click();
   await p.locator(`th.pauta-dia[data-dia="${segunda}"]`).waitFor();
   await devagar(800);
   // a ficha cresce do card (a escala do card até 1) e volta para ele
@@ -1083,11 +1091,11 @@ async function oMovimento(navegador, url) {
   console.log(`ok: o movimento: a troca de semana e de dia desliza para o lado da navegação, a ficha cresce do card e volta; reduzido, só esmaece${VIDEO ? ` (vídeo em ${VIDEO})` : ''}`);
 }
 
-/** O período escrito da Semana, como a Pauta escreve: "16 a 22 de novembro", "30 de novembro a 6 de dezembro". */
+/** O período escrito da Semana, o mesmo da agenda (#171): "16 – 22 de novembro", "30 de novembro – 6 de dezembro". */
 const periodoDaSemana = (seg) => {
   const fim = mais(seg, 6);
   const [a, b] = [Number(seg.slice(5, 7)) - 1, Number(fim.slice(5, 7)) - 1];
-  return a === b ? `${Number(seg.slice(8))} a ${Number(fim.slice(8))} de ${MESES[b]}` : `${Number(seg.slice(8))} de ${MESES[a]} a ${Number(fim.slice(8))} de ${MESES[b]}`;
+  return a === b ? `${Number(seg.slice(8))} – ${Number(fim.slice(8))} de ${MESES[b]}` : `${Number(seg.slice(8))} de ${MESES[a]} – ${Number(fim.slice(8))} de ${MESES[b]}`;
 };
 
 /** Grava, a cada quadro, o que o seletor de datas, o resumo e o cabeçalho da grade (ou a fita) mostram, enquanto `agir`
@@ -1119,7 +1127,7 @@ async function quadrosDaTroca(p, agir, alvo, parado = 400) {
 }
 
 /**
- * Os contadores da agenda na Pauta (#170): o seletor de datas ("16 a 22 de novembro", "sexta, 27 de novembro") e os
+ * Os contadores da agenda na Pauta (#170): o seletor de datas ("16 – 22 de novembro", "sexta, 27 de novembro") e os
  * números do resumo do administrador ("1 linha sem editor · 15 claquetes sem card") contam como os da agenda (No
  * Trello) quando a semana ou o dia muda: o período e os números do cabeçalho da grade (e da fita do Dia) contam juntos,
  * pelas datas, e o "hoje" volta à mão no fim. Com o movimento reduzido, nada conta: só esmaece. Com VIDEO=pasta, grava
@@ -1181,7 +1189,7 @@ async function osContadores(navegador, url) {
   await p.locator('.pauta-vazia').waitFor();
   await p.waitForFunction((t) => document.querySelector('.pauta-periodo')?.textContent.replace(/\s+/g, ' ').trim() === t, periodoDaSemana(proxima));
   await devagar(800);
-  await p.locator('.pauta-hoje').click();
+  await p.locator('.pauta-nav .voltar-hoje').click();
   await p.waitForFunction((t) => document.querySelector('.pauta-periodo')?.textContent.replace(/\s+/g, ' ').trim() === t, periodoDaSemana(segunda));
   await devagar(800);
 
