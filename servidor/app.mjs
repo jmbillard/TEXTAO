@@ -73,6 +73,7 @@ import { DIAS_DA_CONTINUIDADE, historicoDaPauta } from '../src/modelo/distribuir
 import { areaDaChaveDeExibicao, ehArea, ehAreaDosRoteiros, ehExibicao } from '../src/modelo/areas.ts';
 import { cicloDoRoteiro } from '../src/modelo/cicloDoRoteiro.ts';
 import { CHAVE_DA_AGENDA_DE_FILMES, recusaDaFormaDaAgenda } from '../src/modelo/agendaDeFilmes.ts';
+import { CHAVE_DA_LISTA_DE_ARTES, recusaDaListaDeArtes } from '../src/modelo/listaDeArtes.ts';
 import { CHAVE_DA_ORDEM, CHAVE_DO_FILTRO, CHAVE_DOS_RECOLHIDOS, DIAS_DO_ENTREGUE, blocosDasProducoes, diaDoPrazo, recusaDaOrdem, recusaDoFiltro, recusaDosRecolhidos } from '../src/modelo/producoesPorPraca.ts';
 import { SEM_LIGACAO, criarEtapaDaProducao } from './etapa-da-producao.mjs';
 import { criarCardDaProducao } from './card-da-producao.mjs';
@@ -3375,7 +3376,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // todo mundo: { 'pauta.visao': 'dia' }, ou os blocos recolhidos da tela de produções (#113), também de todo mundo:
       // { 'producoes.recolhidos': ['RJ'] }, a ordem das praças arrumada arrastando (#159): { 'producoes.ordem': ['SP', 'RJ'] },
       // a forma de ver a agenda de filmes (#169): { 'filmes.agenda': 'sessao' }, e a campanha que filtra a tela de
-      // produções (#179): { 'producoes.campanha': { id, nome } } (null tira).
+      // produções (#179): { 'producoes.campanha': { id, nome } } (null tira), e a lista das artes recolhida ao lado do
+      // texto: { 'artes.recolhida': true }.
       // Cada chave é conferida aqui; uma ruim recusa o pedido inteiro
       if (req.method !== 'PUT') return json(res, 405, { erro: 'Método não permitido.' });
       const corpo = (await lerCorpo(req).catch(() => null)) ?? {};
@@ -3397,6 +3399,13 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         if (chave === CHAVE_DA_AGENDA_DE_FILMES) {
           // a forma de ver a agenda de filmes (#169), de todo mundo: { 'filmes.agenda': 'data' | 'sessao' }
           const recusa = recusaDaFormaDaAgenda(valor);
+          if (recusa) return json(res, 400, { erro: recusa });
+          continue;
+        }
+        if (chave === CHAVE_DA_LISTA_DE_ARTES) {
+          // a lista das artes ao lado do texto recolhida (a da folha de escrita e a da revisão), de todo mundo:
+          // { 'artes.recolhida': true | false }
+          const recusa = recusaDaListaDeArtes(valor);
           if (recusa) return json(res, 400, { erro: recusa });
           continue;
         }

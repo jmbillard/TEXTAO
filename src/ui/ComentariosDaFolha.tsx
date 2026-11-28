@@ -126,7 +126,11 @@ export function ComentariosDaFolha({ id, editor, eu, avisar, pedido, contar }: P
     editor.on('transaction', mudou);
     editor.on('update', guardar);
     window.addEventListener('resize', mudou);
+    // a folha também muda de largura sem a janela mudar (a lista das artes que recolhe): a quebra das linhas muda junto
+    const ro = typeof ResizeObserver === 'function' && !editor.isDestroyed ? new ResizeObserver(mudou) : null;
+    ro?.observe(editor.view.dom);
     return () => {
+      ro?.disconnect();
       clearTimeout(prazo);
       editor.off('transaction', mudou);
       editor.off('update', guardar);

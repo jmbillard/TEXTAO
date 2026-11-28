@@ -108,6 +108,9 @@ export const atalho = (s: string) =>
 /** Comentar o trecho selecionado na folha de escrita (#192): Ctrl+Alt+M (no Mac, ⌃⌥M; o ⌘⌥M também vale). */
 export const ATALHO_DE_COMENTAR = ehMac ? '⌃⌥M' : 'Ctrl+Alt+M';
 
+/** Recolher e abrir a lista das artes ao lado do texto (a da folha de escrita e a da revisão): Ctrl+Alt+A, como o comentar. */
+export const ATALHO_DAS_ARTES = ehMac ? '⌃⌥A' : 'Ctrl+Alt+A';
+
 /** A pessoa pediu ao sistema para reduzir o movimento: as animações viram só a troca. */
 export const semMovimento = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
