@@ -9,6 +9,7 @@ import { Icone, type NomeIcone } from './icones';
 import { plural } from './util';
 import { RoteiroAberto } from './RoteiroAberto';
 import './areas.css';
+import { Vazio } from './pecas';
 
 /* "Meus roteiros" do Redator e do Editor (#101): a lista simples, por dia, dos roteiros guardados no PROMeiro em que a
    pessoa é o redator (ou o editor), pelo nome do cadastro ligado ao e-mail dela. Cada roteiro mostra o seu estado no
@@ -314,7 +315,7 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false 
                 {c.nome}
                 <span>{deles.length}</span>
               </h4>
-              {deles.length ? <ul className="cartoes-meus">{deles.map(cartao)}</ul> : <span className="coluna-vazia">nenhum</span>}
+              {deles.length ? <ul className="cartoes-meus">{deles.map(cartao)}</ul> : <Vazio como="span" pequeno className="coluna-vazia">nenhum</Vazio>}
             </section>
           );
         })}
@@ -352,7 +353,7 @@ export function MeusRoteiros({ area, topo, aberto, abrir, voltar, admin = false 
       <p className="faixa-nota">O ciclo de um roteiro, da esquerda para a direita. Toque num estado para ver só ele.</p>
       {ESTADOS.filter((c) => !soEstado || soEstado === c.id).map((c) => {
         const deles = doEstado(roteiros, c.id);
-        if (!deles.length) return soEstado ? <p key={c.id} className="coluna-vazia">Nenhum roteiro {c.nome.toLowerCase()} agora.</p> : null;
+        if (!deles.length) return soEstado ? <Vazio key={c.id} pequeno className="coluna-vazia">nenhum roteiro {c.nome.toLowerCase()} agora</Vazio> : null;
         return (
           <section key={c.id} className="grupo-estado" data-estado={c.id} aria-label={`${c.nome}, ${plural(deles.length, 'roteiro', 'roteiros')}`}>
             <div className="dia-topo">

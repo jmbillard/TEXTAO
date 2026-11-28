@@ -1,5 +1,6 @@
 import { iniciais } from '../dados/colaboracao';
 import type { ForaNaPauta } from '../modelo/ausencias';
+import { Vazio } from './pecas';
 
 /* Quem está fora no dia, na Pauta da edição (#128, no desenho do #162): uma folha ao lado do "Minha pauta", com cada
    pessoa uma vez e a etiqueta "fora". Todos veem só "fora"; o motivo e a observação vêm do servidor só para a coordenação
@@ -34,7 +35,7 @@ export function ForaNaPautaTela({ fora, dia }: { fora: readonly ForaNaPauta[] | 
           ))}
         </ul>
       ) : (
-        <p className="pauta-nada">ninguém</p>
+        <Vazio className="pauta-nada">ninguém</Vazio>
       )}
     </section>
   );

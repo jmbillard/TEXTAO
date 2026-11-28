@@ -8,8 +8,10 @@ export const emCampo = (e: KeyboardEvent) => !!(e.target as HTMLElement | null)?
  * A busca recolhida numa lupa (a da fila e a da Pauta da edição, #162): "/" ou um clique abrem o campo; Esc limpa e
  * recolhe; sem texto, perder o foco recolhe.
  * @param ativa o "/" vale (a tela está à vista, sem nada por cima)
+ * @param className o lugar dela na tela (o resto do desenho e do comportamento é o mesmo em todas)
+ * @param focar já abre com o foco (a lista que acabou de abrir para buscar, como o acervo da ficha)
  */
-export function BuscaNaLupa({ valor, mudar, ativa, dica = 'Buscar claquete, atração ou redator', rotulo = 'Buscar roteiros' }: { valor: string; mudar: (v: string) => void; ativa: boolean; dica?: string; rotulo?: string }) {
+export function BuscaNaLupa({ valor, mudar, ativa, dica = 'Buscar claquete, atração ou redator', rotulo = 'Buscar roteiros', className = '', focar = false }: { valor: string; mudar: (v: string) => void; ativa: boolean; dica?: string; rotulo?: string; className?: string; focar?: boolean }) {
   const campo = useRef<HTMLInputElement>(null);
   const [aberta, setAberta] = useState(false);
   useEffect(() => {
@@ -23,7 +25,7 @@ export function BuscaNaLupa({ valor, mudar, ativa, dica = 'Buscar claquete, atra
     return () => window.removeEventListener('keydown', tecla);
   }, [ativa]);
   return (
-    <label className={`busca lupa ${aberta || valor ? 'aberta' : ''}`} title="Buscar (/)">
+    <label className={`busca lupa ${aberta || valor ? 'aberta' : ''}${className ? ` ${className}` : ''}`} title="Buscar (/)">
       <Icone nome="lupa" tam={15} traco={2} />
       <input
         ref={campo}
@@ -31,6 +33,7 @@ export function BuscaNaLupa({ valor, mudar, ativa, dica = 'Buscar claquete, atra
         placeholder={dica}
         aria-label={rotulo}
         aria-keyshortcuts="/"
+        autoFocus={focar}
         value={valor}
         onChange={(e) => mudar(e.target.value)}
         onFocus={() => setAberta(true)}
@@ -43,6 +46,22 @@ export function BuscaNaLupa({ valor, mudar, ativa, dica = 'Buscar claquete, atra
           e.currentTarget.blur();
         }}
       />
+      {/* o × que limpa (#171): o nosso, em --tinta3, no lugar do azul do navegador */}
+      {valor && (
+        <button
+          type="button"
+          className="busca-limpar"
+          aria-label="Limpar a busca"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.preventDefault();
+            mudar('');
+            campo.current?.focus();
+          }}
+        >
+          <Icone nome="fechar" tam={13} traco={2} />
+        </button>
+      )}
     </label>
   );
 }

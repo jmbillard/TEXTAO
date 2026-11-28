@@ -420,8 +420,9 @@ uma que já existe liga a que existe). Ligar e tirar entram na **linha do tempo*
 campanha X", "tirou da campanha X"). Aparece como a **etiqueta da campanha**, um componente só em todas as telas: a
 pílula com a bolinha no tom da campanha (o mesmo tom para a mesma campanha); no card de Produções, a primeira ligada e
 "+N" das outras; no card aberto, todas, com a busca para ligar, "+ Nova campanha" e tirar com a caixinha de desfazer
-(#178). Em Produções, o **filtro por campanha** (#179): o botão "Campanha" ao lado da lupa (a mesma busca da campanha
-do card aberto) ou um clique na etiqueta de um card escolhe a campanha, e as praças de sempre mostram só as Produções
+(#178). O clique na etiqueta abre a página da campanha, em todas as telas, também no card de Produções (#171). Em
+Produções, o **filtro por campanha** (#179): o botão "Campanha" ao lado da lupa (a mesma busca da campanha do card
+aberto) escolhe a campanha, e as praças de sempre mostram só as Produções
 dela, com as contagens acompanhando; ao lado do título, "só" e a etiqueta, com o × que tira; o Esc também tira. Fica
 lembrado por pessoa, como as outras preferências.
 _Evitar_: grupo, pacote, projeto (o projeto é do After), tag
@@ -577,7 +578,14 @@ _Evitar_: editadas (o PROMeiro não sabe o que já foi editado)
 
 **Card aberto**:
 O painel de 720 px no centro, sobre um véu leve, que cresce do card clicado e volta para ele ao fechar; no celular,
-ocupa a tela toda. A ficha da claquete da Pauta da edição abre nele; a tela de Produções também.
+ocupa a tela toda. A ficha da claquete da Pauta da edição abre nele; a tela de Produções, os Filmes e o card da agenda
+No Trello também (#171).
+
+**Caixinha do desfazer**:
+A caixinha preta embaixo, no meio da janela, depois de uma ação que dá para voltar: a frase do que aconteceu, o
+"Desfazer" sublinhado e o × que fecha. Uma só em todas as telas (#171), por cima do card aberto, com o prazo de 8 s
+em toda parte e o trilho do tempo, um fio claro que encolhe até o fim.
+_Evitar_: toast, snackbar
 _Evitar_: modal, popup
 
 **Escala da edição**:

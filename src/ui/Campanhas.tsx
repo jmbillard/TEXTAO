@@ -5,17 +5,18 @@ import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { ROTULO_DA_COLUNA, type CardDaProducao } from '../modelo/producoesPorPraca';
 import { AchadoDaProducao } from './BuscaDasProducoes';
 import { BuscaNaLupa, emCampo } from './BuscaNaLupa';
-import { CaixinhaDoDesfazer } from './CaixinhaDoDesfazer';
+import { CaixinhaDoDesfazer } from './desfazer';
 import { Icone } from './icones';
 import { ListaDeAchados } from './ListaDeAchados';
 import { useDeslize } from './movimentoDasProducoes';
-import { tracoDe } from './pecas';
+import { tracoDe, Vazio } from './pecas';
 import { ProducaoAberta } from './ProducaoAberta';
 import { CardDaTela, Conta, diaEscrito, hojeEmSaoPaulo, prazoEscrito } from './Producoes';
 import { NumeroQueConta, escrever } from './topoDaAgenda';
 import { plural, semMovimento } from './util';
 import './producoes.css';
 import './campanhas.css';
+import { CASCATA_MS, NA_CASCATA } from './cena';
 
 /* As Campanhas (#180): a lista das campanhas e a página de cada uma, cada uma com o endereço próprio (#/campanhas e
    #/campanhas/<id>), abertas pelo caminho do topo e pela etiqueta da campanha em qualquer tela.
@@ -32,11 +33,6 @@ import './campanhas.css';
      Apagar (o administrador ou quem criou) volta para a lista, com o Desfazer.
    Com o movimento reduzido, tudo só esmaece. */
 
-/** Quanto tempo a caixinha de desfazer fica aberta (o mesmo das Produções). */
-const DESFAZER_MS = 10_000;
-/** O intervalo da cascata dos cartões e das colunas, de um para o outro, e quantos entram nela. */
-const CASCATA_MS = 35;
-const NA_CASCATA = 14;
 /** Quanto o clique espera a Produção ser lida antes de abrir o card aberto (o mesmo das Produções). */
 const ESPERA_PARA_ABRIR_MS = 350;
 
@@ -53,7 +49,7 @@ function useEscLimpa(ativa: boolean, limpar: () => void) {
   }, [ativa, limpar]);
 }
 
-/** A caixinha de desfazer aberta, com a frase e o que desfaz; fecha sozinha depois de um tempo. */
+/** A caixinha de desfazer aberta, com a frase e o que desfaz; fecha sozinha no fim do prazo. */
 interface Desfazivel {
   texto: ReactNode;
   desfazer: () => void;
@@ -61,22 +57,20 @@ interface Desfazivel {
 }
 function useCaixinha() {
   const [d, setD] = useState<Desfazivel | null>(null);
-  useEffect(() => {
-    if (!d) return;
-    const t = setTimeout(() => setD(null), DESFAZER_MS);
-    return () => clearTimeout(t);
-  }, [d]);
   const abrir = useCallback((texto: ReactNode, desfazer: () => void) => setD({ texto, desfazer, n: Date.now() }), []);
-  const caixinha = d && (
+  const caixinha = (
     <CaixinhaDoDesfazer
-      key={d.n}
-      onde="tela"
-      texto={d.texto}
-      desfazer={() => {
-        setD(null);
-        d.desfazer();
-      }}
-      fechar={() => setD(null)}
+      caixinha={
+        d && {
+          id: d.n,
+          texto: d.texto,
+          desfazer: () => {
+            setD(null);
+            d.desfazer();
+          },
+          fechar: () => setD(null),
+        }
+      }
     />
   );
   return { abrir, fechar: () => setD(null), caixinha };
@@ -199,9 +193,9 @@ export function ListaDasCampanhas({ topo, abrir }: { topo: ReactNode; abrir: (id
               )}
             </p>
             {!lidas.length ? (
-              <p className="prod-nada camp-nada">nenhuma campanha ainda: ela nasce no card aberto da Produção, ou no “Nova campanha”</p>
+              <Vazio className="prod-nada camp-nada">nenhuma campanha ainda: ela nasce no card aberto da Produção, ou no “Nova campanha”</Vazio>
             ) : (
-              !vistas.length && <p className="prod-nada camp-nada">nenhuma campanha com isso</p>
+              !vistas.length && <Vazio className="prod-nada camp-nada">nenhuma campanha com isso</Vazio>
             )}
             <ol ref={lista} className="camp-cartoes">
               {vistas.map((c, i) => (
@@ -565,7 +559,7 @@ export function PaginaDaCampanha({ id, topo, voltar }: { id: string; topo: React
                         <span className="prod-coluna-nome">{ROTULO_DA_COLUNA[k]}</span>
                         <Conta n={cs.length} traco={tracoDe(pagina.campanha.id) + i} rotulo={plural(cs.length, 'produção', 'produções')} />
                       </h3>
-                      {cs.length ? cards(cs) : <p className="prod-nada">{busca.trim() ? 'nada com isso' : 'nada aqui'}</p>}
+                      {cs.length ? cards(cs) : <Vazio className="prod-nada">{busca.trim() ? 'nada com isso' : 'nada aqui'}</Vazio>}
                     </section>
                   ))}
                 </div>
@@ -705,11 +699,11 @@ function LigarProducoes({ aberto, dentro, hoje, ligar, fechar }: { aberto: boole
             buscando={buscando}
             titulo={erro ? <span className="prod-busca-falha">{erro}</span> : !achados ? 'Buscando…' : achados.total ? <>{plural(achados.total, 'produção', 'produções')} com <q>{achados.termo}</q></> : <>Nada com <q>{achados.termo}</q></>}
             dica="um clique escolhe · escolha quantas quiser, de várias buscas"
-            nada={achados && !achados.total && !erro ? <p className="prod-nada prod-busca-nada">nenhuma Produção com isso</p> : null}
+            nada={achados && !achados.total && !erro ? 'nenhuma Produção com isso' : null}
             linha={(c) => <AchadoDaProducao c={c} diaEscrito={(d) => diaEscrito(d, hoje)} prazoEscrito={(p) => prazoEscrito(p, hoje)} escolhida={escolhidas.has(c.id)} jaEsta={dentro.has(c.id)} aoClicar={() => alternar(c)} />}
           />
         ) : (
-          <p className="prod-nada camp-ligar-dica">busque pela claquete ou pela atração e escolha quantas quiser</p>
+          <Vazio className="prod-nada camp-ligar-dica">busque pela claquete ou pela atração e escolha quantas quiser</Vazio>
         )}
       </div>
     </section>

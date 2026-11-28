@@ -7,6 +7,10 @@ import type { CSSProperties, ReactNode, Ref } from 'react';
 */
 
 export const SUAVE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+/** A cascata de entrada das listas e das colunas (#171), a mesma em todas as telas: o passo de um para o outro e
+    quantos entram nela (os de depois chegam com o último). */
+export const CASCATA_MS = 30;
+export const NA_CASCATA = 12;
 /** A curva da escrita à mão: começa devagar, corre no meio e assenta. */
 export const ESCREVER = 'cubic-bezier(0.45, 0, 0.3, 1)';
 /** O risco à mão, num viewBox de 100 × 14. */

@@ -6,6 +6,7 @@ import type { TurnoDaEscala } from '../modelo/escala';
 import { Icone } from './icones';
 import { DIAS_DA_SEMANA, partes } from './pecasDaPauta';
 import './ausenciasDaPauta.css';
+import { Vazio } from './pecas';
 
 /* Montar a pauta, ausências (#128): a caixa "Fora" da coluna lateral (#126). Ela mostra quem está fora no dia, com o
    motivo (só a coordenação vê esta tela), e o "marcar ausência". O diálogo de marcar tem quem, o tipo, o período (de e
@@ -136,7 +137,7 @@ export function AusenciasDoDia({ dia, turnos, editores, antes, mudou, foraNoDia,
           ))}
         </ul>
       ) : (
-        <p className="coluna-ninguem">ninguém</p>
+        <Vazio className="coluna-ninguem">ninguém</Vazio>
       )}
       {aviso && (
         <p className="aus-aviso" role="status">

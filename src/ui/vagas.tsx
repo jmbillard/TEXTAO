@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, type ReactNode, type RefObject } from 'react';
 import { semMovimento } from './util';
+import { SUAVE } from './cena';
 
 /* Vagas: o que entra ou sai de uma lista abre ou fecha o seu espaço, em vez de aparecer ou sumir de estalo.
    Quem sai continua desenhado no lugar onde estava enquanto a vaga fecha; quem volta (desfazer) abre a vaga de novo.
@@ -155,7 +156,7 @@ function deslizar(raiz: HTMLElement, seletor: string, antes: Map<string, Ponto>)
   if (mudou.length > MAX_DESLIZANDO) return;
   for (const { el, dx, dy } of mudou) {
     el.classList.add('deslizando');
-    const a = el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: DURACAO_DESLIZE, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' /* a curva --suave */ });
+    const a = el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: DURACAO_DESLIZE, easing: SUAVE });
     deslizes.set(el, a);
     const fim = () => {
       if (deslizes.get(el) === a) el.classList.remove('deslizando');

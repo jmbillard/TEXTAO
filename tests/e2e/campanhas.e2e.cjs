@@ -170,11 +170,11 @@ async function naPagina(navegador, url, ids, video = '') {
     await p.locator('.camp-sugestoes .prod-card', { hasText: 'Novela Aurora Abertura' }).getByRole('button', { name: 'Ligar à campanha' }).click();
     assert.equal(await voou, true, 'a sugestão desliza até a coluna');
     await coluna(p, 'entrada').locator('.prod-claquete', { hasText: 'Novela Aurora Abertura' }).waitFor();
-    await p.locator('.prod-desfazer', { hasText: 'entrou na campanha' }).waitFor();
+    await p.locator('.desfazer', { hasText: 'entrou na campanha' }).waitFor();
     await p.waitForFunction(() => document.querySelector('.camp-resumo-linha [data-coluna="entrada"] .prod-conta')?.textContent === '2');
     assert.equal(await p.locator('.camp-sugestoes').count(), 0, 'sem sugestões agora');
     await capturar(p, '04-sugestao-ligada');
-    await p.locator('.prod-desfazer').getByRole('button', { name: 'Desfazer' }).click();
+    await p.locator('.desfazer').getByRole('button', { name: 'Desfazer' }).click();
     await p.locator('.camp-sugestoes .prod-claquete', { hasText: 'Novela Aurora Abertura' }).waitFor();
     assert.deepEqual(await claquetesDa(p, 'entrada'), [`Novela Aurora Teaser ${dm(3)} SP`]);
 
@@ -195,7 +195,7 @@ async function naPagina(navegador, url, ids, video = '') {
     await painel.getByRole('button', { name: 'Ligar 2 Produções' }).click();
     await coluna(p, 'entrada').locator('.prod-claquete', { hasText: 'Show da Noite' }).waitFor();
     await coluna(p, 'entrada').locator('.prod-claquete', { hasText: 'Cozinha de Vó' }).waitFor();
-    await p.locator('.prod-desfazer', { hasText: '2 Produções entraram na campanha' }).waitFor();
+    await p.locator('.desfazer', { hasText: '2 Produções entraram na campanha' }).waitFor();
     await p.locator('.camp-ligar:not(.aberto)').waitFor({ state: 'attached' });
     // a Cozinha está em duas campanhas: a etiqueta mostra a primeira e "+1"
     assert.equal((await cardDe(p, 'Cozinha de Vó').locator('.campanha-mais').textContent()).trim(), '+1');
@@ -204,9 +204,9 @@ async function naPagina(navegador, url, ids, video = '') {
     await cardDe(p, 'Show da Noite').hover();
     await cardDe(p, 'Show da Noite').getByRole('button', { name: /Tirar .*Show da Noite.* da campanha/ }).click();
     await cardDe(p, 'Show da Noite').waitFor({ state: 'detached' });
-    await p.locator('.prod-desfazer', { hasText: 'saiu da campanha' }).waitFor();
+    await p.locator('.desfazer', { hasText: 'saiu da campanha' }).waitFor();
     await capturar(p, '06-tirou');
-    await p.locator('.prod-desfazer').getByRole('button', { name: 'Desfazer' }).click();
+    await p.locator('.desfazer').getByRole('button', { name: 'Desfazer' }).click();
     await cardDe(p, 'Show da Noite').waitFor();
 
     // renomear: o lápis, Enter salva, e o nome se escreve de novo
@@ -280,11 +280,11 @@ async function osPapeis(navegador, url, ids) {
   try {
     await p.locator('.camp-titulo-nome', { hasText: 'AESP Verão' }).waitFor();
     await p.getByRole('button', { name: 'Apagar a campanha AESP Verão' }).click();
-    await p.locator('.prod-desfazer', { hasText: 'A campanha AESP Verão foi apagada' }).waitFor();
+    await p.locator('.desfazer', { hasText: 'A campanha AESP Verão foi apagada' }).waitFor();
     assert.equal(hashDe(p), '#/campanhas');
     await p.waitForFunction(() => ![...document.querySelectorAll('.camp-cartao-nome')].some((e) => e.textContent.includes('AESP')));
     await capturar(p, '10-apagada-desfazer');
-    await p.locator('.prod-desfazer').getByRole('button', { name: 'Desfazer' }).click();
+    await p.locator('.desfazer').getByRole('button', { name: 'Desfazer' }).click();
     await p.locator('.camp-cartao-nome', { hasText: 'AESP Verão' }).waitFor();
     // criar pela lista: o nome, Enter, e a página da nova
     await p.getByRole('button', { name: 'Nova campanha' }).click();

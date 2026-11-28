@@ -60,7 +60,8 @@ export function LadoALado({ dados, posicoes, foraNoDia }: Props) {
   if (!lido.foto || !diferencas)
     return (
       <p className="lado lado-sem" role="status">
-        <b>Lado a lado com a planilha</b> · ainda não chegou foto da planilha para este dia (o n8n manda de hora em hora).
+        {/* o "·" fica com o título: a linha que quebra não começa num separador */}
+        <b>Lado a lado com a planilha</b>{'\u00a0·'} ainda não chegou foto da planilha para este dia (o n8n manda de hora em hora).
       </p>
     );
   const { foto } = lido;

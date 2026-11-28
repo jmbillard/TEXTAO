@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Vagas } from './vagas';
 import { CaixinhaDoDesfazer, useDesfazerAdiado } from './desfazer';
 import { Comemoracao, tremerDeLeve } from './Comemoracao';
@@ -48,10 +48,11 @@ import {
 import { chaveDaClaquete, semAcento } from '../modelo/vocabularios';
 import { semPracaNoComeco, semPracaNoFim } from '../modelo/pracas';
 import { SetaCurva } from './setaCurva';
-import { RABISCO } from './cena';
+import { RABISCO, SUAVE } from './cena';
 import { caminhoDoIcone, Icone } from './icones';
-import { Marca } from './pecas';
-import { plural } from './util';
+import { BuscaNaLupa } from './BuscaNaLupa';
+import { Marca, NadaNaBusca } from './pecas';
+import { plural, semMovimento } from './util';
 import { useTelaDeCelular } from './faixa';
 import { FichaNoCelular, ListaDoAcervo, SecaoAcervo } from './FichaDaAtracao';
 import { ListaDeDuplicadas, PainelDasDuplicadas, useDuplicadas } from './Duplicadas';
@@ -560,13 +561,13 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   useEffect(() => {
     const el = vaga.current;
     if (!el) return;
-    const t = setTimeout(() => el.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }), 60);
+    const t = setTimeout(() => el.scrollIntoView({ block: 'nearest', behavior: semMovimento() ? 'auto' : 'smooth' }), 60);
     return () => clearTimeout(t);
   }, [nomeVaga, aba, semCad]);
   const [salvando, setSalvando] = useState(false);
   const [sem, setSem] = useState<KeySemCadastro[] | null>(null);
   // apagar, remover key e ignorar: some na hora, a caixinha preta oferece desfazer e só depois vai para o servidor
-  const { escondidos, desfazer, comDesfazer, desfazerAgora } = useDesfazerAdiado();
+  const { escondidos, desfazer, comDesfazer } = useDesfazerAdiado();
   const nomeAtr = useRef<HTMLInputElement>(null);
   // as claquetes que têm atração: o número e a amostra da comemoração do Sem cadastro zerado (total null: ainda não
   // chegou, ou o cadastro que zerou a lista acabou de mudar o número)
@@ -583,6 +584,19 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   // linhas que saíram, guardados antes de elas saírem; cena: a atração que vai na claquete
   const [festa, setFesta] = useState<{ destacadas: string[]; cena: string } | null>(null);
   const listaEl = useRef<HTMLElement>(null);
+  // a troca de aba (#171): a lista nova sobe de leve, como as outras listas que chegam, em vez de trocar seca (as
+  // abas ficam paradas; só o rabisco da aba anda)
+  const qualLista = `${aba}|${semCad}|${dupAberta}|${padAberta}|${ilhasAbertas}`;
+  const listaAntes = useRef(qualLista);
+  useLayoutEffect(() => {
+    if (listaAntes.current === qualLista) return;
+    listaAntes.current = qualLista;
+    const el = listaEl.current;
+    if (!el || typeof el.animate !== 'function') return;
+    const partes = [...el.children].filter((c) => !c.classList.contains('lista-topo')) as HTMLElement[];
+    const vao = partes.map((c) => c.animate(semMovimento() ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: SUAVE }));
+    return () => vao.forEach((x) => x.cancel());
+  }, [qualLista]);
   // o Sem cadastro como está agora (as funções assíncronas de salvar e ligar leem daqui, não da renderização velha)
   const semAgora = useRef({ sem, escondidos, semCad });
   semAgora.current = { sem, escondidos, semCad };
@@ -670,19 +684,12 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
   importacaoAgora.current = importacao;
   // a caixinha preta logo depois de gravar: "+N no acervo de X. Desfazer" por alguns segundos
   const [caixinha, setCaixinha] = useState<{ id: string; atracao: string; novas: number } | null>(null);
-  const prazoDaCaixinha = useRef(0);
-  const fecharCaixinha = () => {
-    clearTimeout(prazoDaCaixinha.current);
-    setCaixinha(null);
-  };
-  useEffect(() => () => clearTimeout(prazoDaCaixinha.current), []);
+  const fecharCaixinha = () => setCaixinha(null);
   const gravou = (atracao: string, resultado: ResultadoDaImportacao) => {
     setImportacao((i) => (i ? { ...i, resultado } : i));
     window.scrollTo(0, 0);
     if (!resultado.importacao) return;
-    clearTimeout(prazoDaCaixinha.current);
     setCaixinha({ id: resultado.importacao, atracao, novas: resultado.novas });
-    prazoDaCaixinha.current = window.setTimeout(() => setCaixinha(null), 8000);
   };
   /** Desfaz a importação (a caixinha preta, o resultado ou o histórico da ficha): a ficha e a lista releem o total. */
   const desfazerAImportacao = async (id: string, atracao: string) => {
@@ -903,17 +910,10 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
 
   // o e-mail do login (#106): grava na hora e a caixinha preta oferece desfazer (que grava o de antes)
   const [gravado, setGravado] = useState<{ id: string; texto: React.ReactNode; voltar: () => Promise<void> } | null>(null);
-  const prazoDoGravado = useRef(0);
-  useEffect(() => () => clearTimeout(prazoDoGravado.current), []);
-  const mostrarGravado = (id: string, texto: React.ReactNode, voltar: () => Promise<void>) => {
-    clearTimeout(prazoDoGravado.current);
-    setGravado({ id, texto, voltar });
-    prazoDoGravado.current = window.setTimeout(() => setGravado(null), 6000);
-  };
+  const mostrarGravado = (id: string, texto: React.ReactNode, voltar: () => Promise<void>) => setGravado({ id, texto, voltar });
   const voltarGravado = async () => {
     const g = gravado;
     if (!g) return;
-    clearTimeout(prazoDoGravado.current);
     setGravado(null);
     try {
       await g.voltar();
@@ -1131,10 +1131,14 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
         pad={pode ? { ativa: padAberta, total: padeiros.pendentes, abrir: () => { setAba('atracoes'); setSemCad(false); setDupAberta(false); setPadAberta(true); setIlhasAbertas(false); setBusca(''); setFesta(null); fecharFicha(); } } : null}
         ilhas={{ ativa: ilhasAbertas, total: ilhas.dados?.ilhas.length ?? 0, abrir: () => { setAba('atracoes'); setSemCad(false); setDupAberta(false); setPadAberta(false); setIlhasAbertas(true); setBusca(''); setFesta(null); fecharFicha(); } }}
       />
-      <label className="cad-busca">
-        <Icone nome="lupa" />
-        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={ilhasAbertas ? 'Buscar ilha' : padAberta ? 'Buscar usuário, sigla ou designer' : dupAberta ? 'Buscar claquete' : semCad ? 'Buscar key ou claquete' : aba === 'atracoes' ? 'Buscar atração ou key' : aba === 'redatores' ? 'Buscar redator, key ou e-mail' : 'Buscar editor, key ou e-mail'} />
-      </label>
+      <BuscaNaLupa
+        className="cad-busca"
+        valor={busca}
+        mudar={setBusca}
+        ativa
+        rotulo="Buscar nos cadastros"
+        dica={ilhasAbertas ? 'Buscar ilha' : padAberta ? 'Buscar usuário, sigla ou designer' : dupAberta ? 'Buscar claquete' : semCad ? 'Buscar key ou claquete' : aba === 'atracoes' ? 'Buscar atração ou key' : aba === 'redatores' ? 'Buscar redator, key ou e-mail' : 'Buscar editor, key ou e-mail'}
+      />
     </div>
   );
   const prontoParaSalvar =
@@ -1227,7 +1231,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
                   aoAcabar={() => setFesta(null)}
                 />
               ) : (
-                <p className="cad-vazio">Nada com “{busca}”.</p>
+                <NadaNaBusca termo={busca} className="cad-nada" />
               );
               // a atração nova: a folha de rascunho toma o lugar da linha da key (sem ela no rascunho, entra no alto)
               const itens: { k: string; no: React.ReactNode }[] = lista.map((k) => ({
@@ -1258,7 +1262,7 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
             {!dupAberta && !semCad && dados && aba === 'redatores' && comRascunho(listaRedatores, itemRedator)}
             {!dupAberta && !semCad && dados && aba === 'editores' && comRascunho(listaEditores, itemEditor)}
             {!dupAberta && !semCad && dados && termo && !rascunho && !(aba === 'atracoes' ? listaAtracoes : aba === 'redatores' ? listaRedatores : listaEditores).length && (
-              <p className="cad-vazio">Nada com “{busca}”.</p>
+              <NadaNaBusca termo={busca} className="cad-nada" />
             )}
           </section>
           )}
@@ -1447,21 +1451,20 @@ export function Cadastros({ voltar, avisar, inicio }: Props) {
         </div>
       </main>
       )}
-      {desfazer && (
-        <CaixinhaDoDesfazer key={desfazer.id} desfazer={desfazerAgora}>
-          {desfazer.texto}
-        </CaixinhaDoDesfazer>
-      )}
-      {gravado && !desfazer && !caixinha && (
-        <CaixinhaDoDesfazer key={gravado.id} desfazer={() => void voltarGravado()}>
-          {gravado.texto}
-        </CaixinhaDoDesfazer>
-      )}
-      {caixinha && !desfazer && (
-        <CaixinhaDoDesfazer key={caixinha.id} className="caixinha-importacao" desfazer={() => void desfazerAImportacao(caixinha.id, caixinha.atracao)}>
-          {caixinha.novas ? <><b>+{caixinha.novas}</b> no acervo de {caixinha.atracao}.</> : <>Importação gravada no acervo de {caixinha.atracao}.</>}
-        </CaixinhaDoDesfazer>
-      )}
+      {/* uma caixinha por vez: o apagar, depois a importação, depois o e-mail gravado */}
+      <CaixinhaDoDesfazer
+        className={!desfazer && caixinha ? 'caixinha-importacao' : ''}
+        caixinha={
+          desfazer ??
+          (caixinha && {
+            id: caixinha.id,
+            texto: caixinha.novas ? <><b>+{caixinha.novas}</b> no acervo de {caixinha.atracao}.</> : <>Importação gravada no acervo de {caixinha.atracao}.</>,
+            desfazer: () => void desfazerAImportacao(caixinha.id, caixinha.atracao),
+            fechar: fecharCaixinha,
+          }) ??
+          (gravado && { id: gravado.id, texto: gravado.texto, desfazer: () => void voltarGravado(), fechar: () => setGravado(null) })
+        }
+      />
     </div>
   );
 }

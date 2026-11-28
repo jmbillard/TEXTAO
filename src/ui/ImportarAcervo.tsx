@@ -18,6 +18,7 @@ import {
 } from '../dados/armazenamento';
 import { Icone } from './icones';
 import { chaveDeBusca, plural } from './util';
+import { NadaNaBusca, Vazio } from './pecas';
 
 /* A importação do acervo por CSV (ADR 0005), na ficha da atração: a área "Importar CSV" (o botão ou o arquivo solto),
    a conferência antes de gravar (o placar, os filtros por estado, a busca, o ✕ que tira e devolve uma linha, as
@@ -519,7 +520,7 @@ export function ConferenciaDaImportacao({
           </div>
         );
       })}
-      {!visiveis.length && <p className="conf-mais">{termo ? `Nada com “${busca.trim()}”.` : 'Nada neste filtro.'}</p>}
+      {!visiveis.length && (termo ? <NadaNaBusca termo={busca} className="conf-nada" /> : <Vazio className="conf-nada">nada neste filtro</Vazio>)}
       {visiveis.length > MAXIMO && <p className="conf-mais">E mais {visiveis.length - MAXIMO}: filtre ou busque para achar.</p>}
       <div className="conf-pe">
         {faltam > 0 && <span className="falta">{faltam === 1 ? 'Falta 1 decisão' : `Faltam ${faltam} decisões`}</span>}

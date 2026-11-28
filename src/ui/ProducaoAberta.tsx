@@ -16,7 +16,7 @@ import {
 } from '../dados/armazenamento';
 import { ApelidoDaClaquete, NomeDaClaquete, versoesDoCard } from './Apelido';
 import { CardAberto, FecharOCardAberto } from './CardAberto';
-import { CaixinhaDoDesfazer } from './CaixinhaDoDesfazer';
+import { CaixinhaDoDesfazer, PRAZO_DO_DESFAZER } from './desfazer';
 import { EtiquetaDaCampanha } from './EtiquetaDaCampanha';
 import { campanhasParaLigar, type CampanhaDoCard } from '../modelo/campanhas';
 import { MenuLigar } from './Cadastros';
@@ -29,6 +29,7 @@ import { useDesdeDaMarca } from './riscos';
 import { Icone } from './icones';
 import { Vagas } from './vagas';
 import { nomeComparavel } from '../modelo/ligarPeloNome';
+import { BolinhaDeEstado } from './pecas';
 
 /* O card aberto da tela de produções (#113; #160, a alternativa A escolhida pelo usuário): um clique no card abre a
    Produção no CardAberto, o painel de 720 px no centro, que cresce do card clicado e volta para ele (Esc, o X ou o
@@ -83,8 +84,6 @@ const diasDoPrazo = (hoje: string, n = 12) => {
 const instanteCurto = (iso: string) => new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '');
 const diaCurto = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' });
 const NIVEL = { 1: 'BAIXA', 2: 'MÉDIA', 3: 'ALTA' } as const;
-/** Quanto tempo o "Desfazer" do apagar fica à vista. */
-const DESFAZER_MS = 8_000;
 /** O campo que acabou de mudar pisca de leve (a troca), esse tempo. */
 const TROCA_MS = 450;
 
@@ -132,14 +131,9 @@ function ConteudoDaProducao({ card, inicial = null, hoje, prazoEscrito, voce, et
   }, [versao]);
   useEffect(() => {
     if (!apagada) return;
-    const t = setTimeout(() => setApagada(null), DESFAZER_MS);
+    const t = setTimeout(() => setApagada(null), PRAZO_DO_DESFAZER);
     return () => clearTimeout(t);
   }, [apagada]);
-  useEffect(() => {
-    if (!desfazivel) return;
-    const t = setTimeout(() => setDesfazivel(null), DESFAZER_MS);
-    return () => clearTimeout(t);
-  }, [desfazivel]);
   useEffect(() => {
     if (!trocou) return;
     const t = setTimeout(() => setTrocou(null), TROCA_MS);
@@ -273,7 +267,7 @@ function ConteudoDaProducao({ card, inicial = null, hoje, prazoEscrito, voce, et
     <div className="pa" data-producao={card.id} onKeyDown={escDoMenu}>
       <header className="pa-topo">
         <span className="pa-etapa" data-etapa={card.etapa}>
-          <i aria-hidden="true" />
+          <BolinhaDeEstado estado={card.etapa} />
           {card.praca || 'sem praça'} · {ROTULO_DA_COLUNA[card.etapa]}
         </span>
         <FecharOCardAberto rotulo="Fechar a Produção" />
@@ -583,7 +577,7 @@ function ConteudoDaProducao({ card, inicial = null, hoje, prazoEscrito, voce, et
         )}
       </footer>
 
-      {desfazivel && <CaixinhaDoDesfazer key={desfazivel.vez} onde="card" texto={desfazivel.texto} desfazer={() => (desfazivel.arte ? desfazerApagar(desfazivel.arte) : desfazivel.campanha && campanha(desfazivel.campanha, true))} fechar={() => setDesfazivel(null)} />}
+      <CaixinhaDoDesfazer caixinha={desfazivel && { id: desfazivel.vez, texto: desfazivel.texto, desfazer: () => (desfazivel.arte ? desfazerApagar(desfazivel.arte) : desfazivel.campanha && campanha(desfazivel.campanha, true)), fechar: () => setDesfazivel(null) }} />
     </div>
   );
 }

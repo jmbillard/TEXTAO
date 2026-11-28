@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { lerAndamentoDoProjeto, type AndamentoDoProjeto } from '../dados/armazenamento';
 import { tituloCurto, type Etapa, type Frente, type TicketDoAndamento } from '../modelo/andamento';
 import { Icone } from './icones';
-import { Marca } from './pecas';
+import { Marca, NumeroCirculado } from './pecas';
 import { useTelaDeCelular } from './faixa';
 import './configuracao.css';
 import './andamento.css';
@@ -135,7 +135,7 @@ export function Andamento({ voltar }: Props) {
             )}
             {a && (
               <p className="and-resumo">
-                <b>{a.resumo.feitos}</b> de <b>{a.resumo.total}</b> tickets das frentes estão feitos.{onde && <> Na meta de longo prazo, estamos {onde}.</>}
+                <NumeroCirculado className="and-feitos">{a.resumo.feitos}</NumeroCirculado> de <b>{a.resumo.total}</b> tickets das frentes estão feitos.{onde && <> Na meta de longo prazo, estamos {onde}.</>}
               </p>
             )}
             <section className="cfg-secao and-secao" aria-labelledby="and-meta">

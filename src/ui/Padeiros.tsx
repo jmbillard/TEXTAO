@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { lerPadeiros, ligarPadeiro, revogarPadeiro, type DesignerDoPadeiro, type EstadoDaChave, type Padeiro } from '../dados/armazenamento';
 import { Icone } from './icones';
 import './padeiros.css';
+import { NadaNaBusca, NumeroCirculado } from './pecas';
+import { instanteDaAgenda } from './util';
 
 /* Aba Padeiros dos Cadastros (#137), só para administradores: os Padeiros que pediram a chave do Padeiro (um por
    usuário e por computador), com a sigla, o designer ligado e o último aviso. O pendente se liga a um designer
@@ -12,11 +14,8 @@ import './padeiros.css';
 
 const ROTULOS: Record<EstadoDaChave, string> = { pendente: 'pendente', ligada: 'ligada', revogada: 'revogada' };
 
-const quando = (iso: string | null) => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  return `${d.getDate()}/${d.getMonth() + 1} ${d.getHours()}h${String(d.getMinutes()).padStart(2, '0')}`;
-};
+/** "sex 27/11 23h35", no padrão da agenda (#171) */
+const quando = (iso: string | null) => (iso ? instanteDaAgenda(iso) : '');
 
 /** Os Padeiros: lidos quando a pessoa é administradora (o número de pendentes vai na aba mesmo com ela fechada). */
 export function usePadeiros(pode: boolean) {
@@ -66,7 +65,7 @@ export function ListaDePadeiros({ lista, designers, falha, ligar, revogar, busca
       {falha && <p className="cad-falha">{falha}</p>}
       {!lista && !falha && <p className="cad-vazio">Lendo os Padeiros…</p>}
       {lista && !lista.length && <p className="cad-vazio">Nenhum Padeiro pediu a chave ainda. Ele pede sozinho, na primeira vez que abre com o endereço do PROMeiro.</p>}
-      {lista && !!lista.length && !vistos.length && <p className="cad-vazio">Nada com “{busca.trim()}”.</p>}
+      {lista && !!lista.length && !vistos.length && <NadaNaBusca termo={busca} className="cad-nada" />}
       {lista && !!lista.length && !designers.length && (
         <p className="cad-falha">Nenhum designer ativo na tabela designers do Teable (a da Configuração · Pessoas): sem ele, não há a quem ligar a chave.</p>
       )}
@@ -184,7 +183,8 @@ export function PainelDosPadeiros({ lista }: { lista: Padeiro[] | null }) {
       {lista && (
         <ul className="contagem-pad">
           <li>
-            <b>{n('pendente')}</b> {n('pendente') === 1 ? 'pendente' : 'pendentes'}
+            {/* os pendentes são a tarefa de quem administra: o número circulado (#171) */}
+            {n('pendente') ? <NumeroCirculado className="pad-pendentes">{n('pendente')}</NumeroCirculado> : <b>0</b>} {n('pendente') === 1 ? 'pendente' : 'pendentes'}
           </li>
           <li>
             <b>{n('ligada')}</b> {n('ligada') === 1 ? 'ligada' : 'ligadas'}

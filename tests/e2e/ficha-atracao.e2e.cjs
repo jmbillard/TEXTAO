@@ -296,6 +296,7 @@ async function noComputador(navegador, url, tema) {
   await lista.locator('.filtro-tipos button', { hasText: 'sem tipo' }).click();
   assert.deepEqual(await lista.locator('.arte-acervo .t').allTextContents(), ['PLATEIA', 'SABADO 7 15', 'VEM AÍ']);
   await lista.locator('.filtro-tipos button', { hasText: 'Todos' }).click();
+  await lista.locator('.cad-busca input').focus();
   await lista.locator('.cad-busca input').fill('sabado');
   assert.deepEqual(
     await lista.locator('.arte-acervo').evaluateAll((ls) => ls.map((l) => `${l.querySelector('.t').textContent} ${l.querySelector('.s').textContent}`)),
@@ -353,12 +354,15 @@ async function noCelular(navegador, url, tema) {
   // só consulta: nada de keys, novo pacote, lixeira ou formulário
   assert.equal(await p.locator('.ficha-celular .key, .pacote-cad, .lixo-cad, .form-cad, .atracao-cad, .area-importar').count(), 0, 'no celular, a ficha é só consulta');
   assert.match(await ficha.locator('.importar-no-computador').textContent(), /^Importar CSV é no computador\./);
+  await ficha.locator('.cad-busca input').focus();
   await ficha.locator('.cad-busca input').fill('sábado');
   assert.deepEqual(await ficha.locator('.arte-acervo .t').allTextContents(), ['PRÓXIMO SÁBADO', 'SÁBADO', 'SÁBADO', 'SÁBADO 3:00', 'SABADO 7 15']);
   await semRolagemDeLado(p, `celular ${tema}`);
   await capturar(p, `ficha-celular-${tema === 'dark' ? 'escuro' : 'claro'}`);
+  await ficha.locator('.cad-busca input').focus();
   await ficha.locator('.cad-busca input').fill('nenhuma assim');
-  await ficha.locator('.cad-vazio', { hasText: 'Nada com “nenhuma assim” no acervo.' }).waitFor();
+  // #171: o vazio da busca à mão (NadaNaBusca)
+  await ficha.locator('.nada-na-busca', { hasText: 'nada com “nenhuma assim” no acervo' }).waitFor();
   await ficha.locator('.trilha-cad .botao-texto').tap();
   await linha(p, PROGRAMA).waitFor();
   assert.deepEqual(erros, [], `celular ${tema}: erros na página`);
@@ -801,7 +805,7 @@ async function desfazerNoComputador(navegador, url, tema) {
   assert.equal((await res.locator('.grande').textContent()).replace(/\s+/g, ''), '6→4');
   assert.equal(await res.locator('.det-desfeita').textContent(), `Importação desfeita: o acervo de ${revista} voltou a 4.`);
   assert.equal(await res.locator('.nao-voltaram').count(), 0);
-  assert.equal(await p.locator('.caixinha-importacao').count(), 0, 'a caixinha some ao desfazer');
+  await p.locator('.caixinha-importacao').waitFor({ state: 'detached', timeout: 2000 });
   assert.deepEqual(
     LINHAS.filter((l) => l.atracao[0]?.title === revista).map((l) => `${l.arte} (${l.tipo ?? ''})`),
     ['CAPA (CRT)', 'ENTREVISTA (RDP)', 'BASTIDORES ()', 'MODA NOVA (RDP)'],

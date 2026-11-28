@@ -16,7 +16,7 @@
   border-radius: 16px; background: var(--papel); color: var(--tinta); box-shadow: var(--sombra-menu); outline: none;
 }
 .card-aberto-rolar { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 22px 26px 24px; border-radius: inherit; }
-.card-aberto-fechar { display: inline-grid; place-items: center; width: 34px; height: 34px; margin: -8px -10px -8px 0; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--tinta2); transition: background-color 0.15s, color 0.15s; }
+.card-aberto-fechar { display: inline-grid; place-items: center; width: 34px; height: 34px; margin: -8px -10px -8px 0; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--tinta2); transition: background-color 0.15s var(--suave), color 0.15s var(--suave); }
 .card-aberto-fechar:hover { background: var(--neutro); color: var(--tinta); }
 .card-aberto-fechar:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
 

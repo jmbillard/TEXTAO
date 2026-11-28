@@ -10,6 +10,7 @@ import { RABISCO } from './cena';
 import { Icone } from './icones';
 import { lambeDe } from './lambe';
 import { ListaDeAchados } from './ListaDeAchados';
+import { BolinhaDeEstado, Vazio } from './pecas';
 import { relativoA } from './pecasDaPauta';
 import { ItemQueAbre, Periodo, ResumoQueConta, TopoDoDia, VoltarParaHoje, useContagemDoPeriodo, type PalavrasDoResumo } from './topoDaAgenda';
 import { useTrocaDeSemana } from './trocaDeSemana';
@@ -180,7 +181,7 @@ export function AgendaDeFilmes({ avisar }: { avisar: (t: string) => void }) {
             )
           }
           dica="em todas as semanas · Esc limpa"
-          nada={achados.length ? null : <p className="nada prod-busca-nada">nenhum filme com isso na agenda</p>}
+          nada={achados.length ? null : 'nenhum filme com isso na agenda'}
           linha={(x) => <AchadoDoFilme x={x} hoje={hoje} abrir={abrir} />}
         />
       )}
@@ -205,14 +206,14 @@ export function AgendaDeFilmes({ avisar }: { avisar: (t: string) => void }) {
                     {d.itens.map((x, i) => (
                       <PosterNaAgenda key={x.exibicao.id} x={x} ordem={k + i} hoje={hoje} linha={[x.exibicao.sessao, x.exibicao.hora].filter(Boolean).join(' · ')} abrir={abrir} />
                     ))}
-                    {!d.itens.length && <li className="nada entra-suave">nenhum filme</li>}
+                    {!d.itens.length && <Vazio como="li" className="nada entra-suave">nenhum filme</Vazio>}
                   </ul>
                 </section>
               );
             })}
           </div>
         ) : !sessoes.length ? (
-          <p className="nada agenda-filmes-nada">nenhum filme na grade dos próximos dias</p>
+          <Vazio className="nada agenda-filmes-nada">nenhum filme na grade dos próximos dias</Vazio>
         ) : (
           <div className="filmes-sessoes" key="sessao">
             {sessoes.map((s, k) => (
@@ -376,7 +377,7 @@ function ProducaoDaExibicao({ e }: { e: ExibicaoDoFilme }) {
   const p = e.producao;
   return (
     <span className="ficha-filme-producao" data-etapa={p?.etapa ?? (e.trello ? 'card' : 'sem-card')}>
-      <i aria-hidden="true" />
+      <BolinhaDeEstado estado={p?.etapa ?? (e.trello ? 'card' : 'sem-card')} tam="ficha" />
       {p ? (
         <>
           <b>{ROTULO_DA_ETAPA[p.etapa]}</b>

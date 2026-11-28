@@ -140,7 +140,8 @@ async function noComputador(navegador, url, teable, tema) {
   const corrigir = grupo(p, 'corrigir');
   assert.deepEqual(await textos(corrigir.locator('.cor-tabela tbody tr .cor-de-para')), ['Jogo Final 4/12 Dp → Jogo Final 4/12 (DP)', 'Festival 3/1 (MÊS) → Festival 3/1 (M)', 'Novela Sol 28/9 H → Novela Sol 28/9 (H)']);
   const jogo = corrigir.locator('.cor-tabela tbody tr').first();
-  assert.match(await jogo.locator('.cor-dia').textContent(), /27\/11\/2026/);
+  // #171: o dia no padrão da agenda ("sex 27/11"), sem o ponto nem o ano
+  assert.equal((await jogo.locator('.cor-dia').textContent()).trim(), 'sex 27/11');
   assert.equal((await jogo.locator('.cor-editor').textContent()).trim(), 'Bruno Teixeira');
   assert.deepEqual(await textos(jogo.locator('mark')), ['Dp', '(DP)']);
   assert.deepEqual(await textos(corrigir.locator('.cor-tabela tbody tr').last().locator('.cor-editor')), ['sem editor']);
@@ -314,8 +315,8 @@ async function aplicarEDesfazer(navegador, url, teable) {
   await linhaDe(p, jogo.id).waitFor({ state: 'detached' });
   assert.equal((await linhaDe(p, novela.id).locator('.cor-etiqueta').textContent()).trim(), 'mudou desde a proposta');
   // a caixinha de desfazer e o registro
-  const caixinha = p.locator('.cor-desfazer');
-  assert.equal((await caixinha.locator('.cor-desfazer-texto').textContent()).trim(), '1 correção aplicada na pauta.');
+  const caixinha = p.locator('.desfazer');
+  assert.equal((await caixinha.locator('.desfazer-texto').textContent()).trim(), '1 correção aplicada na pauta.');
   const registro = grupo(p, 'registro');
   await registro.locator('tbody tr').first().waitFor();
   assert.deepEqual(await textos(registro.locator('tbody tr .cor-de-para')), ['Jogo Final 4/12 Dp → Jogo Final 4/12 (DP)']);
@@ -388,8 +389,8 @@ async function juntarEDesfazer(navegador, url, teable) {
   assert.deepEqual(ATRACOES.map((a) => [a.id, a.fields.atracao]).filter(([id]) => /E2e[12]$/.test(id)), [['recAtrE2e2', 'A Clínica']]);
   assert.deepEqual(ACERVO.filter((a) => a.id !== 'recArteE2e3').map((a) => a.fields.atracao.map((v) => v.id)), [['recAtrE2e2'], ['recAtrE2e2']]);
   assert.deepEqual(KEYS[0].fields.atracoes.map((v) => v.id), ['recAtrE2e2']);
-  const caixinha = p.locator('.cor-desfazer');
-  assert.equal((await caixinha.locator('.cor-desfazer-texto').textContent()).trim(), 'Atrações juntadas em A Clínica.');
+  const caixinha = p.locator('.desfazer');
+  assert.equal((await caixinha.locator('.desfazer-texto').textContent()).trim(), 'Atrações juntadas em A Clínica.');
   assert.equal((await p.locator('.cor-resultado').textContent()).trim(), 'Juntadas: A Clínica + Clinica → A Clínica: 2 artes do acervo, 1 key e 1 regra.');
   const registro = grupo(p, 'registro');
   await registro.locator('tbody tr', { hasText: '→ A Clínica' }).waitFor();

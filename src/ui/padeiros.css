@@ -3,7 +3,7 @@
 .item-pad .nome svg { color: var(--tinta3); flex: none; }
 .usuario-pad { font: 600 15px var(--sans); color: var(--tinta); overflow-wrap: anywhere; }
 .computador-pad { font: 400 13.5px var(--sans); color: var(--tinta2); overflow-wrap: anywhere; }
-.estado-pad { font: 600 10.5px var(--sans); letter-spacing: 0.09em; text-transform: uppercase; border-radius: 999px; padding: 3px 8px; }
+.estado-pad { font: 600 11.5px var(--sans); letter-spacing: 0.02em; border-radius: 999px; padding: 3px 8px; }
 .estado-pad.pendente { color: var(--falta); background: var(--falta-fundo); }
 .estado-pad.ligada { color: var(--ok); background: var(--ok-fundo); }
 .estado-pad.revogada { color: var(--tinta3); background: var(--neutro); }
@@ -25,7 +25,8 @@
 .dica-pad { font: 400 12.5px var(--sans); color: var(--tinta3); }
 .pad-revogada .usuario-pad, .pad-revogada .computador-pad { color: var(--tinta3); text-decoration: line-through; text-decoration-color: var(--regua-forte); }
 .contagem-pad { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 16px; padding: 0; font: 400 13px var(--sans); color: var(--tinta2); }
-.contagem-pad b { font: 600 20px var(--serifa); color: var(--tinta); margin-right: 3px; }
+.contagem-pad b, .contagem-pad .numero-circulado { font: 600 20px var(--serifa); color: var(--tinta); margin-right: 3px; }
+.contagem-pad .numero-circulado { color: var(--ultra); }
 
 @media (max-width: 640px) {
   .item-pad { grid-template-columns: minmax(0, 1fr); }

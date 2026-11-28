@@ -9,7 +9,7 @@ import { useCodigoDasVersoes } from './CodigoDasVersoes';
 import { Icone } from './icones';
 import { ListaDaPauta, MesaDaPauta, RecadoDoDia } from './MesaDaPauta';
 import { ColunasDoDia, FitaDosDias } from './PautaDoDia';
-import { Marca, useSaida } from './pecas';
+import { Marca, NadaNaBusca, NumeroCirculado, useSaida, Vazio, VoceAMao } from './pecas';
 import { posicaoNaContagem } from './fila';
 import { escrever, Periodo, useContagemDoPeriodo, useEsmaeceAoMudar } from './topoDaAgenda';
 import { semMovimento } from './util';
@@ -130,7 +130,7 @@ function Celula({ c, editor, hoje, foraNoDia, abrir }: { c: CelulaDaSemana; edit
         {foraNoDia && vazia ? (
           <span className="pauta-cel-fora">fora</span>
         ) : vazia ? (
-          editor ? <span className="pauta-cel-fora" aria-label="sem pauta">–</span> : hoje ? <span className="pauta-nada">nada sobrando</span> : null
+          editor ? <span className="pauta-cel-fora" aria-label="sem pauta">–</span> : hoje ? <Vazio como="span" pequeno className="pauta-nada">nada sobrando</Vazio> : null
         ) : (
           <>
             {(c.turno || avisos.length > 0 || infos.length > 0) && (
@@ -168,7 +168,8 @@ function TopoDoDiaDaGrade({ d, i, hoje, irPara }: { d: string; i: number; hoje: 
     <th scope="col" className={`pauta-dia${ehHoje ? ' hoje' : ''}`} data-dia={d}>
       {/* um clique no dia abre aquele Dia (#97) */}
       <a className="pauta-dia-link" href={hashDaPauta({ dia: d })} title="Abrir o dia, com cada editor numa coluna" onClick={(e) => (e.preventDefault(), irPara({ dia: d }))}>
-        <span className="pauta-dia-sem">{DIAS_DA_SEMANA[partes(d).semana]}</span> <span className="pauta-dia-num">{Number(contado.slice(8))}</span>
+        <span className="pauta-dia-sem">{DIAS_DA_SEMANA[partes(d).semana]}</span> {/* hoje, o número circulado à caneta, como na agenda (#171) */}
+        {ehHoje ? <NumeroCirculado traco={1} className="pauta-dia-num">{Number(contado.slice(8))}</NumeroCirculado> : <span className="pauta-dia-num">{Number(contado.slice(8))}</span>}
         {ehHoje && (
           <span ref={marca} className="pauta-dia-rel">
             {' '}
@@ -222,7 +223,7 @@ function GradeDaSemana({ dados, hoje, voce, irPara, abrir, comSobra }: { dados: 
                         {f.editor ? iniciais(f.editor) : '–'}
                       </span>
                       <span className="pauta-nome">{f.editor || 'sem editor'}</span>
-                      {eu && <span className="pauta-mao">você</span>}
+                      {eu && <VoceAMao />}
                     </span>
                     <span className="pauta-editor-meta">{f.editor ? `${claquetes} ${claquetes === 1 ? 'claquete' : 'claquetes'}` : 'sobrou'}</span>
                   </div>
@@ -283,7 +284,7 @@ function AchadosDaBusca({ termo, linhas, hoje, irPara, abrir }: { termo: string;
               ))}
             </ol>
           ) : (
-            <p className="pauta-nada">nada com “{mostrado}” por aqui</p>
+            <NadaNaBusca termo={mostrado} onde="por aqui" className="pauta-nada" />
           )}
         </div>
       </div>

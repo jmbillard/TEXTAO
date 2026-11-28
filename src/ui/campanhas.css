@@ -44,7 +44,7 @@
 .camp-cartao-abrir {
   display: flex; flex-direction: column; gap: 12px; padding: 14px 16px 12px; border-radius: 12px; border: 1px solid var(--regua);
   background: var(--papel); color: var(--tinta); text-decoration: none;
-  transition: border-color 0.2s, box-shadow 0.24s var(--suave), transform 0.24s var(--suave), background-color 0.2s;
+  transition: border-color 0.2s var(--suave), box-shadow 0.24s var(--suave), transform 0.24s var(--suave), background-color 0.2s var(--suave);
 }
 .camp-cartao-abrir:hover { border-color: var(--regua-forte); transform: translateY(-1px); box-shadow: 0 1px 2px rgb(26 25 22 / 6%), 0 6px 14px rgb(26 25 22 / 8%); }
 .camp-cartao-abrir:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
@@ -63,14 +63,14 @@
 @keyframes chegar-campo { from { opacity: 0; transform: translateY(-4px); } }
 
 /* ---------- a página ---------- */
-.camp-voltar { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; margin: -4px 0 -10px; font: 600 12.5px var(--sans); color: var(--tinta3); text-decoration: none; transition: color 0.15s, transform 0.2s var(--suave); }
+.camp-voltar { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; margin: -4px 0 -10px; font: 600 12.5px var(--sans); color: var(--tinta3); text-decoration: none; transition: color 0.15s var(--suave), transform 0.2s var(--suave); }
 .camp-voltar:hover { color: var(--tinta); transform: translateX(-2px); }
 .camp-cabeca { flex-wrap: wrap; }
 .camp-titulo { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .camp-titulo .camp-bolinha { width: 14px; height: 14px; animation: pingar 0.6s var(--suave) 0.15s backwards; }
 @keyframes pingar { 0% { transform: scale(0); } 55% { transform: scale(1.35); } 100% { transform: scale(1); } }
 .camp-titulo-nome { overflow-wrap: anywhere; }
-.camp-lapis { flex: none; display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--tinta3); cursor: pointer; opacity: 0; transition: opacity 0.15s, background-color 0.15s, color 0.15s; }
+.camp-lapis { flex: none; display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--tinta3); cursor: pointer; opacity: 0; transition: opacity 0.15s var(--suave), background-color 0.15s var(--suave), color 0.15s var(--suave); }
 .camp-titulo:hover .camp-lapis, .camp-lapis:focus-visible { opacity: 1; }
 .camp-lapis:hover { background: var(--neutro); color: var(--tinta); }
 @media (hover: none) { .camp-lapis { opacity: 1; } }
@@ -87,7 +87,7 @@
 .camp-pagina .prod-card { position: relative; }
 .camp-tirar {
   position: absolute; top: 5px; right: 5px; display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px;
-  background: var(--cartao); color: var(--tinta3); cursor: pointer; opacity: 0; transform: scale(0.85); transition: opacity 0.15s, transform 0.2s var(--suave), color 0.15s, background-color 0.15s;
+  background: var(--cartao); color: var(--tinta3); cursor: pointer; opacity: 0; transform: scale(0.85); transition: opacity 0.15s var(--suave), transform 0.2s var(--suave), color 0.15s var(--suave), background-color 0.15s var(--suave);
 }
 .prod-card:hover > .camp-tirar, .camp-tirar:focus-visible { opacity: 1; transform: none; }
 .camp-tirar:hover { color: var(--falta); background: var(--falta-fundo); }
@@ -102,7 +102,7 @@
 @keyframes chegar-pauta { from { opacity: 0; transform: translateX(-4px); } }
 
 /* ---------- ligar Produções: abre deslizando a altura ---------- */
-.camp-ligar { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 0.3s var(--suave), opacity 0.2s, margin 0.3s var(--suave); margin: -8px 0; }
+.camp-ligar { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 0.3s var(--suave), opacity 0.2s var(--suave), margin 0.3s var(--suave); margin: -8px 0; }
 .camp-ligar.aberto { grid-template-rows: 1fr; opacity: 1; margin: 0; }
 .camp-ligar-dentro { min-height: 0; overflow: hidden; }
 .camp-ligar.aberto .camp-ligar-dentro { padding: 14px; border-radius: 14px; border: 1px solid var(--regua); background: var(--cartao); box-shadow: var(--sombra-folha); }
@@ -120,7 +120,7 @@
 /* a escolhida: o fundo tingido e a bolinha que acende (nada de check verde) */
 .prod-achado-abrir.escolhida { background: var(--ultra-suave); border-color: color-mix(in srgb, var(--ultra) 45%, var(--regua)); }
 .prod-achado-abrir.escolhida .prod-achado-etapa i { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ultra) 25%, transparent); }
-.prod-achado-abrir.ja-esta { opacity: 0.55; cursor: default; transform: none; box-shadow: none; }
+.prod-achado-abrir.ja-esta { opacity: 0.55; cursor: default; }
 
 /* ---------- as sugestões e as arquivadas ---------- */
 .camp-secao-topo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-bottom: 10px; }
@@ -153,5 +153,5 @@
 @media (prefers-reduced-motion: reduce) {
   .camp-cartao, .camp-sugestoes, .camp-arquivadas, .camp-na-pauta li, .camp-escolhida, .camp-nome-campo, .camp-titulo .camp-bolinha { animation: esmaecer 0.18s ease-out both !important; animation-delay: 0ms !important; }
   .camp-cartao-abrir, .camp-cartao-abrir:hover, .camp-cartao-abrir:active, .camp-voltar:hover { transform: none; }
-  .camp-ligar { transition: opacity 0.18s; }
+  .camp-ligar { transition: opacity 0.18s var(--suave); }
 }

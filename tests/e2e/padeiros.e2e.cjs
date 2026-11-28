@@ -94,6 +94,11 @@ async function noComputador(navegador, s, tema, chaves) {
   await abrirAAba(p);
   assert.equal((await aba.locator('.rot').textContent()).trim(), 'Padeiros 3');
   assert.equal(await p.locator('.cad-busca input').getAttribute('placeholder'), 'Buscar usuário, sigla ou designer');
+  // #171: a busca dos Cadastros é a lupa das outras telas (BuscaNaLupa): recolhida, abre com o "/"
+  assert.ok(await p.locator('.cad-busca').evaluate((l) => l.matches('.busca.lupa:not(.aberta)')), 'a busca dos Cadastros é a lupa recolhida');
+  await p.keyboard.press('/');
+  await p.locator('.cad-busca.aberta').waitFor();
+  await p.keyboard.press('Escape');
   assert.deepEqual(await p.locator('.item-pad .usuario-pad').allTextContents(), ['dora.lima', 'eprado', 'visita']);
   const dora = linha(p, 'dora.lima');
   assert.match(await texto(dora), /dora\.lima em MAC-ARTE-07 pendente nenhum aviso ainda sigla DORA macOS 15\.1 pediu a chave/i);
@@ -109,10 +114,15 @@ async function noComputador(navegador, s, tema, chaves) {
   assert.ok(!(await p.content()).includes(chaves[0]), 'a chave não aparece na tela');
   // o painel da direita
   assert.match(await texto(p.locator('.painel-pad')), /Chave do Padeiro .* 3 pendentes 0 ligadas 0 revogadas/);
+  // #171: os pendentes são a tarefa de quem administra: o número circulado à caneta, em --ultra
+  assert.equal(await p.locator('.contagem-pad .numero-circulado').textContent(), '3');
+  assert.equal(await p.locator('.contagem-pad .numero-circulado svg path').count(), 1, 'o 3 pendentes vem circulado');
   // a busca
+  await p.locator('.cad-busca input').focus();
   await p.locator('.cad-busca input').fill('win-arte');
   await p.waitForFunction(() => document.querySelectorAll('.item-pad').length === 1);
   assert.deepEqual(await p.locator('.item-pad .usuario-pad').allTextContents(), ['eprado']);
+  await p.locator('.cad-busca input').focus();
   await p.locator('.cad-busca input').fill('');
   await p.waitForFunction(() => document.querySelectorAll('.item-pad').length === 3);
   await semRolagemDeLado(p, `computador ${nome}`);

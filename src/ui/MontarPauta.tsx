@@ -7,13 +7,15 @@ import { nomeComparavel } from '../modelo/ligarPeloNome';
 import { acrescentarDemanda, escalarNa, lugarDaDemanda, moverDemanda, semEscala, tirarDemanda, type ClaqueteDistribuida } from '../modelo/distribuir';
 import type { DemandaParaDistribuir } from '../modelo/ausencias';
 import { useArrastar, type ItemArrastado, type LugarDeSoltar } from './arrastar';
-import { Alca, EscolherDestino, ParaDistribuir, SemEscala, type Arraste, type Destino } from './ColunaDaPauta';
+import { Alca, BuscaNoMontar, EscolherDestino, ParaDistribuir, SemEscala, batemNaBusca, useForaDaBusca, type Arraste, type Destino } from './ColunaDaPauta';
+import { BuscaNaLupa } from './BuscaNaLupa';
+import { semAcento } from '../modelo/vocabularios';
 import { diaEmSaoPaulo, diaVizinho } from '../modelo/pauta';
 import { CampoDaIlha } from './CampoDaIlha';
 import type { Ilha } from '../modelo/ilhas';
 import { Icone } from './icones';
 import { CaixinhaDoDesfazer } from './desfazer';
-import { Marca } from './pecas';
+import { Marca, NadaNaBusca, RelativoAMao } from './pecas';
 import { ConferirODia, DiaPublicado, FaixaDaPublicacao } from './ConferirPauta';
 import { AusenciasDoDia } from './AusenciasDaPauta';
 import { ColarDaPlanilha, type ColadoParaAplicar } from './ColarDaPlanilha';
@@ -26,6 +28,8 @@ import { juntarODia } from '../modelo/juntarODia';
 import type { Pessoa } from '../modelo/tipos';
 import './pauta.css';
 import './montarPauta.css';
+import { SUAVE, TROCA_ENTRA_MS } from './topoDaAgenda';
+import { semMovimento } from './util';
 
 /* Montar a pauta (#123): a tela em que a coordenação monta o rascunho do dia, numa grade parecida com a planilha
    (a alternativa A do protótipo aprovado). Abas com os dias da semana, cada uma com o estado do dia (vazio ou
@@ -116,6 +120,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
   const grade = useRef<HTMLDivElement>(null);
   // a tela: a grade, a conferência ou a pauta recém-publicada (#127)
   const [vista, setVista] = useState<'montar' | 'conferir' | 'publicada'>('montar');
+  const [busca, setBusca] = useState('');
   const [publicando, setPublicando] = useState(false);
   const [erroAoPublicar, setErroAoPublicar] = useState('');
   // a coluna lateral (#126): quem está fora (da caixa "Fora"), com o dia dessa leitura, e o erro da última ação dela
@@ -131,11 +136,11 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
   useEffect(() => setRepetido(''), [dia]);
   // depois de Distribuir (#151): as claquetes distribuídas (o motivo de cada uma, na dica) e a caixinha do desfazer;
   // saem ao trocar de dia
-  const [distribuicao, setDistribuicao] = useState<{ dia: string; itens: ClaqueteDistribuida[]; caixinha: boolean } | null>(null);
+  const [distribuicao, setDistribuicao] = useState<{ dia: string; itens: ClaqueteDistribuida[]; caixinha: boolean; vez?: number } | null>(null);
   useEffect(() => setDistribuicao(null), [dia]);
   // depois do "Mover para…" (⇄, #163): a claquete movida, para onde foi e de onde veio (a posição e a seguinte, ou a
   // lista com de quem era), para a caixinha do Desfazer; sai ao trocar de dia
-  const [movida, setMovida] = useState<{ dia: string; id: string; texto: string; para: string; de: { lista: string } | { posicao: string; antesDe: string | null } } | null>(null);
+  const [movida, setMovida] = useState<{ vez: number; dia: string; id: string; texto: string; para: string; de: { lista: string } | { posicao: string; antesDe: string | null } } | null>(null);
   useEffect(() => setMovida(null), [dia]);
 
   // o que falta gravar: o dia e as posições de agora (a gravação usa estes, não os da renderização velha)
@@ -413,7 +418,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
     void naColuna(null, () => [], (dia) =>
       distribuirNoDia(dia).then((d) => {
         if (d.distribuidas?.length) {
-          setDistribuicao({ dia, itens: d.distribuidas, caixinha: true });
+          setDistribuicao({ dia, itens: d.distribuidas, caixinha: true, vez: Date.now() });
           setMovida(null);
         }
         return d;
@@ -478,7 +483,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
     // a caixinha só depois de o servidor gravar: se não deu, não há o que desfazer
     void feito.then((ok) => {
       if (!ok || !de || !texto.trim()) return;
-      setMovida({ dia, id, texto: texto.trim(), para, de });
+      setMovida({ vez: Date.now(), dia, id, texto: texto.trim(), para, de });
       setDistribuicao((x) => x && { ...x, caixinha: false });
     });
   };
@@ -569,7 +574,24 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
 
   const atual = dados && (!dia || dados.dia === dia) ? dados : null;
   const rel = atual ? perto(atual.dia, hoje) : '';
+  // a troca de dia (#171): o dia novo chega como a troca da agenda e da Pauta, em vez de trocar seco
+  const corpo = useRef<HTMLDivElement>(null);
+  const diaNaTela = useRef<string | null>(null);
+  const diaAtual = atual?.dia ?? null;
+  useLayoutEffect(() => {
+    const antes = diaNaTela.current;
+    diaNaTela.current = diaAtual;
+    const el = corpo.current;
+    if (!el || !antes || !diaAtual || antes === diaAtual || typeof el.animate !== 'function') return;
+    const lado = diaAtual > antes ? 1 : -1;
+    const a = el.animate(semMovimento() ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: `translateX(${10 * lado}px)` }, { opacity: 1, transform: 'none' }], { duration: TROCA_ENTRA_MS, easing: SUAVE });
+    return () => a.cancel();
+  }, [diaAtual]);
+  // a busca (#171): a lupa das outras telas; as claquetes que não batem esmaecem
+  const termo = semAcento(busca.trim());
+  const nAchadas = termo && atual ? batemNaBusca(termo, [...posicoes.flatMap((p) => p.demandas.map((d) => d.texto)), ...listaDoDia.map((d) => d.texto)]) : 0;
   return (
+    <BuscaNoMontar.Provider value={termo}>
     <div className="pagina pauta montar-pauta">
       <header className="cad-topo">
         <button className="voltar-cad" onClick={voltar}>
@@ -624,7 +646,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
                 {rel && (
                   <>
                     {' · '}
-                    <span className="montar-rel">{rel}</span>
+                    <RelativoAMao rel={rel} className="montar-rel" />
                   </>
                 )}
                 {' · '}
@@ -634,6 +656,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
             <QuemMaisEsta outros={outros} />
           </div>
           <div className="montar-acoes">
+            {atual && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={vista === 'montar' && !colando} dica="Buscar claquete" rotulo="Buscar no dia" />}
             {atual && (
               <button type="button" className="botao" onClick={() => (setColado(''), setColando(true))}>
                 ⎘ Colar da planilha
@@ -647,6 +670,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
           </div>
         </div>
         {atual && <AbasDaSemana dados={atual} hoje={hoje} irPara={irPara} />}
+        {atual && !!termo && (nAchadas ? <p className="montar-achadas">{nAchadas === 1 ? '1 claquete' : `${nAchadas} claquetes`} com “{busca.trim()}”</p> : <NadaNaBusca termo={busca} onde="neste dia" className="montar-achadas" />)}
         {atual && <FaixaDaPublicacao dados={atual} desfazer={() => void desfazer()} />}
         {/* a semana lado a lado com a planilha (#133): as diferenças com a foto do mesmo dia */}
         {atual && <LadoALado dados={atual} posicoes={posicoes} foraNoDia={foraNoDia ?? []} />}
@@ -671,7 +695,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
             </p>
           )}
           {colando && <ColarDaPlanilha dados={atual} posicoes={posicoes} jaFora={foraNoDia ?? []} novoId={novoId} fechar={() => setColando(false)} aplicar={aplicarOColado} />}
-          <div className={`montar-corpo${arrastado ? ` arrastando-${arrastado.tipo}` : ''}`}>
+          <div ref={corpo} className={`montar-corpo${arrastado ? ` arrastando-${arrastado.tipo}` : ''}`}>
           {/* a coluna lateral (#126): para distribuir, sem escala e fora (as ausências, #128) */}
           <aside className="montar-coluna" aria-label="Coluna lateral">
             {erroDaColuna && (
@@ -729,16 +753,21 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
                 </section>
               );
             })}
-            {movida && movida.dia === atual.dia && (
-              <CaixinhaDoDesfazer className="montar-movida" desfazer={desfazerAMovida} fechar={() => setMovida(null)}>
-                <b>{movida.texto}</b> foi para {movida.para}
-              </CaixinhaDoDesfazer>
-            )}
-            {distribuicao?.caixinha && distribuicao.dia === atual.dia && (
-              <CaixinhaDoDesfazer desfazer={desfazerADistribuicaoDoDia} fechar={() => setDistribuicao((x) => x && { ...x, caixinha: false })}>
-                <b>{distribuicao.itens.length}</b> {distribuicao.itens.length === 1 ? 'claquete distribuída' : 'claquetes distribuídas'} · confira e arraste o que quiser
-              </CaixinhaDoDesfazer>
-            )}
+            {/* uma caixinha por vez: a do ⇄ fecha a do Distribuir, e o contrário */}
+            <CaixinhaDoDesfazer
+              caixinha={
+                movida && movida.dia === atual.dia
+                  ? { id: movida.vez, texto: <><b>{movida.texto}</b> foi para {movida.para}</>, desfazer: desfazerAMovida, fechar: () => setMovida(null) }
+                  : distribuicao?.caixinha && distribuicao.dia === atual.dia
+                    ? {
+                        id: `distribuicao-${distribuicao.vez ?? distribuicao.dia}`,
+                        texto: <><b>{distribuicao.itens.length}</b> {distribuicao.itens.length === 1 ? 'claquete distribuída' : 'claquetes distribuídas'} · confira e arraste o que quiser</>,
+                        desfazer: desfazerADistribuicaoDoDia,
+                        fechar: () => setDistribuicao((x) => x && { ...x, caixinha: false }),
+                      }
+                    : null
+              }
+            />
             <p className="montar-teclas">
               <span><kbd>Tab</kbd> próximo campo</span>
               <span><kbd>Enter</kbd> nova linha</span>
@@ -754,6 +783,7 @@ export function MontarPauta({ dia, irPara, voltar, pessoa }: Props) {
         )}
       </main>
     </div>
+    </BuscaNoMontar.Provider>
   );
 }
 
@@ -993,9 +1023,10 @@ function LinhaDaDemanda({ posicao, id, texto, dia, motivo, mudar, tecla, arraste
   const l = lerDemanda(texto, dia);
   const preenchida = !!texto.trim();
   const indo = arraste.arrastado?.tipo === 'demanda' && arraste.arrastado.id === id;
+  const fora = useForaDaBusca(texto);
   return (
     <li
-      className={`montar-demanda t-${l.tipo}${preenchida ? ' arrastavel' : ''}${indo ? ' indo' : ''}${arraste.sobre === `demanda:${posicao}:${id}` ? ' sobre' : ''}${motivo ? ' distribuida' : ''}`}
+      className={`montar-demanda t-${l.tipo}${preenchida ? ' arrastavel' : ''}${indo ? ' indo' : ''}${arraste.sobre === `demanda:${posicao}:${id}` ? ' sobre' : ''}${motivo ? ' distribuida' : ''}${fora ? ' fora-da-busca' : ''}`}
       // a demanda que o Distribuir pôs (#151): o fundo levemente tingido e o motivo na dica
       title={motivo ? `Distribuída: ${motivo}` : undefined}
       data-solta={`demanda:${posicao}:${id}`}

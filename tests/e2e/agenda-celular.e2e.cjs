@@ -133,7 +133,7 @@ const QUADROS = () => {
       px: scrollX,
       interno,
       texto: `${document.querySelector('.secao-trello .semana-nav b').textContent} | ${document.querySelector('.secao-trello-conta').textContent}`,
-      aberto: document.querySelectorAll('.secao-trello .card-semana.aberto').length,
+      aberto: document.querySelectorAll('.card-aberto-camada').length,
       // onde estão as setas, de lado: o seletor tem largura fixa, elas nunca se mexem (nem com o topo contando)
       setas: [...document.querySelectorAll('.secao-trello .semana-nav .botao-icone')].map((b) => Math.round(b.getBoundingClientRect().left * 10) / 10).join(','),
     });
@@ -325,8 +325,16 @@ async function gestos(navegador, url, nome, conferir) {
     const [tx, ty] = await cardAVista(p);
     m = await fase('toque num card', () => p.touchscreen.tap(tx, ty), 900);
     conferir(m.aberto === 1 && m.rolou === 0, rotulo('o toque abre o card, sem rolar a faixa'));
+    // #171: o card abre no centro (CardAberto), na tela toda: o X fecha e volta ao card
+    const fecharOCard = async () => {
+      await p.tap('.card-aberto-fechar');
+      await p.locator('.card-aberto-camada').waitFor({ state: 'detached', timeout: 5000 });
+      await p.waitForTimeout(300);
+    };
+    await fecharOCard();
     m = await fase('toque com tremida de 4 px', () => arrastar(cdp, p, [[tx, ty], [tx + 2, ty + 1], [tx + 4, ty + 1]], 30), 900);
-    conferir(m.aberto === 0 && m.rolou === 0, rotulo('o toque com tremida fecha o card, sem rolar a faixa'));
+    conferir(m.aberto === 1 && m.rolou === 0, rotulo('o toque com tremida também abre o card, sem rolar a faixa'));
+    await fecharOCard();
 
     // as setas andam um dia; toques seguidos somam no destino, e a rolagem é suave
     k = await diaAVista(p);
@@ -933,19 +941,28 @@ async function linhaDoTempo(navegador, url, conferir) {
       await levarAteAAgenda(p);
       conferir(pedidos.length === 0, rotulo(`com os cards fechados, nenhuma linha do tempo é lida (${pedidos.length})`));
       const card = (id) => p.locator(`.secao-trello .semana [data-card="${id}"]`);
+      // #171: o card abre no centro (CardAberto); um por vez: o aberto fecha antes de abrir o outro
+      const ficha = p.locator('.card-trello-ficha');
       const abrirCard = async (id) => {
+        if (await ficha.count()) {
+          await p.keyboard.press('Escape');
+          await ficha.waitFor({ state: 'detached', timeout: 5000 });
+        }
         const b = card(id).locator('.card-semana-abrir');
         if (celular) await b.tap();
         else await b.click();
+        await ficha.waitFor({ timeout: 5000 });
         await p.waitForTimeout(900);
       };
-      const frases = (id) => card(id).locator('.tempo-da-producao.chegou li').allTextContents();
+      const frases = () => ficha.locator('.tempo-da-producao.chegou li').allTextContents();
 
       await abrirCard('agdhoje2');
-      conferir(JSON.stringify(pedidos) === JSON.stringify(['agdhoje2']), rotulo(`abrir o card lê só a linha do tempo dele, pelo card (${pedidos.join(', ')})`));
-      const vistas = await frases('agdhoje2');
+      // (o modo estrito do React, no servidor do e2e, monta o card aberto duas vezes: vale que só ele foi lido)
+      conferir(JSON.stringify([...new Set(pedidos)]) === JSON.stringify(['agdhoje2']), rotulo(`abrir o card lê só a linha do tempo dele, pelo card (${pedidos.join(', ')})`));
+      const lidasAntes = pedidos.filter((c) => c === 'agdhoje2').length;
+      const vistas = await frases();
       conferir(JSON.stringify(vistas) === JSON.stringify(FRASES.agdhoje2), rotulo(`as frases em ordem: "${vistas.join(' · ')}"`));
-      const medida = await card('agdhoje2').evaluate((c) => {
+      const medida = await ficha.evaluate((c) => {
         const l = c.querySelector('.tempo-da-producao > div');
         const li = c.querySelector('.tempo-da-producao li');
         const st = getComputedStyle(li);
@@ -955,25 +972,25 @@ async function linhaDoTempo(navegador, url, conferir) {
       });
       conferir(medida.visivel && medida.cabe, rotulo('a linha do tempo aparece dentro do card, sem passar da largura'));
       conferir(medida.fonte <= 12 && medida.cor !== medida.corDoNome, rotulo(`discreta: letra pequena (${medida.fonte}px) e mais apagada que os nomes`));
-      conferir((await card('agdhoje2').locator('.tempo-da-producao button, .tempo-da-producao a, .tempo-da-producao input').count()) === 0, rotulo('só leitura: nada para clicar'));
+      conferir((await ficha.locator('.tempo-da-producao button, .tempo-da-producao a, .tempo-da-producao input').count()) === 0, rotulo('só leitura: nada para clicar'));
       conferir(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), rotulo('a página não rola para o lado'));
       if (CAPTURAS) {
         const n = `${celular ? 'celular' : 'computador'}-${tema === 'dark' ? 'escuro' : 'claro'}`;
-        await card('agdhoje2').screenshot({ path: `${CAPTURAS}/agenda-card-${n}.png` });
+        await p.locator('.card-aberto').screenshot({ path: `${CAPTURAS}/agenda-card-${n}.png` });
         await p.screenshot({ path: `${CAPTURAS}/agenda-${n}.png` });
       }
 
       // só um card aberto por vez: abrir o entregue da carga, sem eventos, mostra só o estado atual
       await abrirCard('agdhoje1');
-      const daCarga = await frases('agdhoje1');
+      const daCarga = await frases();
       conferir(JSON.stringify(daCarga) === JSON.stringify(FRASES.agdhoje1), rotulo(`a Produção sem eventos mostra só o estado atual: "${daCarga.join(' · ')}"`));
       // o card sem Produção não mostra nada (nem a vaga)
       await abrirCard('agdhoje3');
-      const semProducao = await card('agdhoje3').evaluate((c) => ({ frases: c.querySelectorAll('.tempo-da-producao li').length, altura: c.querySelector('.tempo-da-producao').getBoundingClientRect().height }));
+      const semProducao = await ficha.evaluate((c) => ({ frases: c.querySelectorAll('.tempo-da-producao li').length, altura: c.querySelector('.tempo-da-producao').getBoundingClientRect().height }));
       conferir(semProducao.frases === 0 && semProducao.altura === 0, rotulo('o card sem Produção não mostra nada'));
       // reabrir lê de novo, sem piscar: as frases continuam à vista enquanto a leitura chega
       await abrirCard('agdhoje2');
-      conferir(pedidos.filter((c) => c === 'agdhoje2').length === 2 && JSON.stringify(await frases('agdhoje2')) === JSON.stringify(FRASES.agdhoje2), rotulo('reabrir lê de novo e mostra as mesmas frases'));
+      conferir(pedidos.filter((c) => c === 'agdhoje2').length > lidasAntes && JSON.stringify(await frases()) === JSON.stringify(FRASES.agdhoje2), rotulo('reabrir lê de novo e mostra as mesmas frases'));
       conferir(erros.length === 0, rotulo(`nenhum erro na página${erros.length ? `: ${erros.join(' | ')}` : ''}`));
     } finally {
       await ctx.close();
@@ -1013,7 +1030,20 @@ async function apelidoNaAgenda(navegador, url, api, conferir) {
     const doCodigo = p.locator('.secao-trello .semana [data-card="agdhoje4"]');
     const nomeDe = async (c) => (await c.locator('.card-semana-claquete').innerText()).replace(/\s+/g, ' ').trim();
     const nome = () => nomeDe(card);
-    const versaoNaFicha = async (c) => (await c.locator('.card-semana-dados .card-semana-pessoa', { hasText: 'versão' }).locator('dd').textContent()).trim();
+    // #171: o card abre no centro (CardAberto); a versão se lê no card aberto
+    const ficha = p.locator('.card-trello-ficha');
+    const versaoAberta = async () => (await ficha.locator('.card-semana-dados .card-semana-pessoa', { hasText: 'versão' }).locator('dd').textContent()).trim();
+    const fecharFicha = async () => {
+      await p.keyboard.press('Escape');
+      await ficha.waitFor({ state: 'detached', timeout: 5000 });
+    };
+    const versaoNaFicha = async (c) => {
+      await c.locator('.card-semana-abrir').tap();
+      await ficha.waitFor({ timeout: 5000 });
+      const v = await versaoAberta();
+      await fecharFicha();
+      return v;
+    };
     // com revisão na fila, a agenda encolhe: a semana inteira mostra os cards
     if (await p.isVisible('.secao-trello.encolhida')) {
       await card.waitFor({ state: 'visible', timeout: 5000 });
@@ -1034,18 +1064,19 @@ async function apelidoNaAgenda(navegador, url, api, conferir) {
     await foto('agenda-ligada');
     if (CAPTURAS) await p.screenshot({ path: `${CAPTURAS}/agenda-versoes-celular.png` });
     // fechado, o lápis do toque não está à vista
-    conferir((await card.locator('.card-semana-mais[inert] .card-lapis-toque').count()) === 1 && !(await card.locator('.card-lapis').isVisible()), rotulo('o card fechado sem o lápis (o do toque fica no card aberto)'));
+    conferir(!(await card.locator('.card-lapis').isVisible()), rotulo('o card fechado sem o lápis (o lápis fica no card aberto)'));
     await card.locator('.card-semana-abrir').tap();
+    await ficha.waitFor({ timeout: 5000 });
     await p.waitForTimeout(900);
     // #156: a versão do roteiro no card aberto, V1 sem versão nova; "dar as versões" escondido; sem o link de texto
-    conferir((await versaoNaFicha(card)) === 'V1', rotulo(`o card aberto diz a versão do roteiro, V1 (${await versaoNaFicha(card)})`));
-    conferir((await card.locator('.apelido-claquete').count()) === 0, rotulo('sem apelido, o card aberto não tem a linha do apelido nem a das versões'));
-    conferir((await card.getByRole('button', { name: /dar as versões|Editar as versões|^dar um apelido$/ }).count()) === 0, rotulo('nem "dar as versões" nem o link "dar um apelido"'));
+    conferir((await versaoAberta()) === 'V1', rotulo(`o card aberto diz a versão do roteiro, V1 (${await versaoAberta()})`));
+    conferir((await ficha.locator('.apelido-claquete').count()) === 0, rotulo('sem apelido, o card aberto não tem a linha do apelido nem a das versões'));
+    conferir((await ficha.getByRole('button', { name: /dar as versões|Editar as versões|^dar um apelido$/ }).count()) === 0, rotulo('nem "dar as versões" nem o link "dar um apelido"'));
     // no toque, o lápis fica sempre à vista no card aberto
-    const lapis = card.getByRole('button', { name: /^Dar um apelido:/ });
+    const lapis = ficha.getByRole('button', { name: /^Dar um apelido:/ });
     conferir(await lapis.isVisible(), rotulo('o lápis à vista no card aberto'));
     await lapis.tap();
-    const apelido = card.locator('.apelido-claquete');
+    const apelido = ficha.locator('.apelido-claquete');
     const campo = apelido.getByRole('textbox', { name: 'Apelido da claquete' });
     await campo.waitFor({ state: 'visible', timeout: 5000 });
     conferir((await campo.inputValue()) === claquete, rotulo('o campo abre com a claquete'));
@@ -1054,12 +1085,13 @@ async function apelidoNaAgenda(navegador, url, api, conferir) {
     await apelido.locator('.apelido-nome').waitFor({ state: 'visible', timeout: 5000 });
     conferir((await nome()) === 'SÉRIE FICTÍCIA, O FINAL (H)', rotulo(`o apelido no lugar da claquete, com o código no fim (${await nome()})`));
     conferir((await card.locator('.card-semana-claquete').getAttribute('title')) === `Claquete: ${claquete}`, rotulo('a claquete original aparece ao passar o mouse'));
-    conferir(await card.getByRole('button', { name: /^Editar o apelido:/ }).isVisible(), rotulo('com apelido, o lápis edita'));
+    conferir(await ficha.getByRole('button', { name: /^Editar o apelido:/ }).isVisible(), rotulo('com apelido, o lápis edita'));
     conferir(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), rotulo('a página não rola para o lado'));
-    if (CAPTURAS) await card.screenshot({ path: `${CAPTURAS}/agenda-apelido-celular.png` });
+    if (CAPTURAS) await p.locator('.card-aberto').screenshot({ path: `${CAPTURAS}/agenda-apelido-celular.png` });
     await apelido.getByRole('button', { name: 'voltar ao original' }).tap();
-    await card.locator('.apelido-claquete').waitFor({ state: 'detached', timeout: 5000 });
+    await ficha.locator('.apelido-claquete').waitFor({ state: 'detached', timeout: 5000 });
     conferir(!(await nome()).includes('FINAL') && (await nome()).includes('SERIE'), rotulo(`"voltar ao original" devolve a claquete (${await nome()})`));
+    await fecharFicha();
     // "Mostrar o código das versões" desligado no menu do perfil: só o nome, em todos os cards (a V2 fica)
     await mostrarOCodigo(p, false);
     conferir((await nome()) === claquete && (await nomeDe(doCodigo)) === `${comCodigo} V2`, rotulo(`desligado: só o nome e a versão do roteiro (${await nomeDe(doCodigo)})`));
@@ -1101,12 +1133,20 @@ async function apelidoPeloLapis(navegador, url, conferir) {
     const caixaDaClaquete = await card.locator('.card-semana-claquete').boundingBox();
     conferir(Math.abs(caixaDoLapis.y - caixaDaClaquete.y) < 14, rotulo('o lápis na altura da claquete'));
     await lapis.click();
-    const campo = card.getByRole('textbox', { name: 'Apelido da claquete' });
+    // #171: o lápis abre o card no centro (CardAberto), já no campo do apelido
+    const ficha = p.locator('.card-trello-ficha');
+    const fecharFicha = async () => {
+      await p.keyboard.press('Escape');
+      await ficha.waitFor({ state: 'detached', timeout: 5000 });
+    };
+    const campo = ficha.getByRole('textbox', { name: 'Apelido da claquete' });
     await campo.waitFor({ state: 'visible', timeout: 5000 });
-    conferir((await card.locator('.card-semana-abrir').getAttribute('aria-expanded')) === 'true', rotulo('o lápis abre o card'));
+    conferir((await p.getByRole('dialog').count()) === 1, rotulo('o lápis abre o card'));
     conferir(await campo.evaluate((e) => e === document.activeElement), rotulo('o campo do apelido com o foco'));
     await p.keyboard.press('Escape');
     await campo.waitFor({ state: 'detached', timeout: 5000 });
+    conferir((await p.getByRole('dialog').count()) === 1, rotulo('o Esc do campo não fecha o card'));
+    await fecharFicha();
     // o clique direito: o menu do card com "Dar um apelido"
     await card.locator('.card-semana-claquete').click({ button: 'right' });
     const menu = p.getByRole('menu', { name: /^O card / });
@@ -1121,13 +1161,15 @@ async function apelidoPeloLapis(navegador, url, conferir) {
     await campo.waitFor({ state: 'visible', timeout: 5000 });
     await campo.fill('REALITY FICTÍCIO, A ESTREIA');
     await campo.press('Enter');
-    await card.locator('.apelido-nome').waitFor({ state: 'visible', timeout: 5000 });
+    await ficha.locator('.apelido-nome').waitFor({ state: 'visible', timeout: 5000 });
     conferir((await card.locator('.card-semana-claquete').innerText()).includes('REALITY FICTÍCIO, A ESTREIA'), rotulo('o apelido pelo menu no lugar da claquete'));
+    await fecharFicha();
     await card.locator('.card-semana-claquete').click({ button: 'right' });
     conferir((await menu.getByRole('menuitem').allInnerTexts()).join() === 'Editar o apelido', rotulo('com o apelido, o menu diz "Editar o apelido"'));
     await p.keyboard.press('Escape');
-    await card.getByRole('button', { name: 'voltar ao original' }).click();
-    await card.locator('.apelido-claquete').waitFor({ state: 'detached', timeout: 5000 });
+    await card.locator('.card-semana-abrir').click();
+    await ficha.getByRole('button', { name: 'voltar ao original' }).click();
+    await ficha.locator('.apelido-claquete').waitFor({ state: 'detached', timeout: 5000 });
     conferir(erros.length === 0, rotulo(`nenhum erro na página${erros.length ? `: ${erros.join(' | ')}` : ''}`));
   } finally {
     await ctx.close();
@@ -1186,15 +1228,17 @@ async function letraEVersaoNaAgenda(navegador, url, api, conferir) {
     const card = p.locator('.secao-trello .semana [data-card="agdletrab"]');
     await card.waitFor({ state: 'visible', timeout: 5000 });
     const nome = async () => (await card.locator('.card-semana-claquete').innerText()).replace(/\s+/g, ' ').trim();
-    const dado = async (r) => (await card.locator('.card-semana-dados .card-semana-pessoa', { hasText: r }).locator('dd').textContent()).trim();
+    // #171: o card abre no centro (CardAberto)
+    const ficha = p.locator('.card-trello-ficha');
+    const dado = async (r) => (await ficha.locator('.card-semana-dados .card-semana-pessoa', { hasText: r }).locator('dd').textContent()).trim();
     conferir((await nome()) === `${naAgenda} B`, rotulo(`a claquete da letra B termina em "B", sem a V1 (${await nome()})`));
     await card.scrollIntoViewIfNeeded();
     await card.locator('.card-semana-abrir').tap();
     await p.waitForTimeout(900);
     conferir((await dado('letra')) === 'B' && (await dado('versão')) === 'V1', rotulo(`o card aberto diz a letra e a versão (${await dado('letra')} ${await dado('versão')})`));
-    const liberacao = card.getByRole('radiogroup', { name: 'A versão anterior já tinha sido liberada para exibição?' });
+    const liberacao = ficha.getByRole('radiogroup', { name: 'A versão anterior já tinha sido liberada para exibição?' });
     conferir((await liberacao.getByRole('radio', { name: 'Sim' }).getAttribute('aria-checked')) === 'true', rotulo('a resposta guardada aparece marcada'));
-    if (CAPTURAS) await card.screenshot({ path: `${CAPTURAS}/agenda-letra-b.png` });
+    if (CAPTURAS) await p.locator('.card-aberto').screenshot({ path: `${CAPTURAS}/agenda-letra-b.png` });
     await liberacao.getByRole('radio', { name: 'Não' }).tap();
     await p.waitForFunction(() => document.querySelector('.secao-trello .semana [data-card="agdletrab"] .marca-letra-versao')?.textContent?.trim() === 'V2', null, { timeout: 5000 });
     conferir((await nome()) === `${naAgenda} V2` && (await dado('letra')) === 'A' && (await dado('versão')) === 'V2', rotulo(`corrigida para "Não": a A V2 (${await nome()})`));
@@ -1204,8 +1248,8 @@ async function letraEVersaoNaAgenda(navegador, url, api, conferir) {
       mb = await lerMeta('agdletrab');
     }
     conferir(mb?.versao === 2 && !mb?.letra && mb?.substituiu?.liberada === false, rotulo(`a correção fica gravada (${JSON.stringify([mb?.letra, mb?.versao, mb?.substituiu])})`));
-    if (CAPTURAS) await card.screenshot({ path: `${CAPTURAS}/agenda-letra-corrigida.png` });
-    const unha = await card.locator('.card-semana-liberacao').evaluate((e) => [e, ...e.querySelectorAll('*')].some((x) => parseFloat(getComputedStyle(x).borderLeftWidth) > 1 || /inset/.test(getComputedStyle(x).boxShadow)));
+    if (CAPTURAS) await p.locator('.card-aberto').screenshot({ path: `${CAPTURAS}/agenda-letra-corrigida.png` });
+    const unha = await ficha.locator('.card-semana-liberacao').evaluate((e) => [e, ...e.querySelectorAll('*')].some((x) => parseFloat(getComputedStyle(x).borderLeftWidth) > 1 || /inset/.test(getComputedStyle(x).boxShadow)));
     conferir(!unha, rotulo('nada de unha na correção'));
     conferir(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), rotulo('a página não rola para o lado'));
     conferir(erros.length === 0, rotulo(`nenhum erro na página${erros.length ? `: ${erros.join(' | ')}` : ''}`));
@@ -1293,6 +1337,20 @@ async function campanhaNaAgenda(navegador, url, conferir) {
         await card('agdhoje1').screenshot({ path: `${pasta}/agenda-campanha-card-${rotulo}.png` });
         await p.screenshot({ path: `${pasta}/agenda-campanha-${rotulo}.png` });
       }
+      // #171: o card abre no centro (CardAberto, o mesmo da Pauta, das Produções e dos Filmes), com todas as campanhas
+      const abre = card('agdhoje1').locator('.card-semana-abrir');
+      if (rotulo.startsWith('celular')) await abre.tap();
+      else await abre.click();
+      const ficha = p.getByRole('dialog').locator('.card-trello-ficha');
+      await ficha.waitFor();
+      conferir((await ficha.locator('.campanhas .campanha-nome').allTextContents()).join('|') === 'Lançamento Fictício|AESP Fictícia', `${rotulo}: o card aberto com todas as campanhas`);
+      conferir((await p.locator('.card-aberto-camada').evaluate((c) => c.parentElement === document.body)) === true, `${rotulo}: o card aberto no centro, por cima da página`);
+      if (pasta) {
+        await p.waitForTimeout(400);
+        await p.screenshot({ path: `${pasta}/agenda-card-aberto-${rotulo}.png` });
+      }
+      await p.keyboard.press('Escape');
+      await ficha.waitFor({ state: 'detached' });
       // o clique na etiqueta leva à página da campanha (#180), como em qualquer tela (a campanha fictícia não existe no
       // servidor: a página diz que ela não existe mais, mas o endereço é o dela)
       await etiqueta.getByRole('button', { name: 'Abrir a campanha Lançamento Fictício' }).click();
@@ -1302,6 +1360,43 @@ async function campanhaNaAgenda(navegador, url, conferir) {
     } finally {
       await ctx.close();
     }
+  }
+}
+
+/**
+ * A busca na agenda (#171): toda tela de lista ou agenda tem a lupa (BuscaNaLupa). A da fila busca também na agenda No
+ * Trello: os cards que não batem saem, e sem nenhum a agenda fica, com o "nada com “x” na agenda" à mão.
+ */
+async function buscaNaAgenda(navegador, url, conferir) {
+  const rotulo = (t) => `busca na agenda, computador: ${t}`;
+  const { ctx, p, erros } = await contexto(navegador, 'about:blank', { viewport: { width: 1440, height: 900 } });
+  try {
+    await ctx.route('**/api/andamento', (r) => r.fulfill({ json: ANDAMENTO }));
+    await p.goto(url);
+    await p.waitForSelector('.secao-trello .semana .coluna');
+    await p.waitForTimeout(900);
+    const lupa = p.locator('.barra-topo .busca.lupa');
+    conferir((await lupa.count()) === 1, rotulo('a lupa está no topo'));
+    const cards = p.locator('.secao-trello .card-semana');
+    const antes = await cards.count();
+    const alvo = (await p.locator('.secao-trello .card-semana[data-card="agdhoje1"] .card-semana-claquete').innerText()).trim().split(/\s+/)[0];
+    await p.keyboard.press('/');
+    await p.keyboard.type(alvo, { delay: 20 });
+    await p.waitForTimeout(700);
+    const depois = await cards.count();
+    conferir(depois >= 1 && depois < antes && (await p.locator('.secao-trello .card-semana[data-card="agdhoje1"]').count()) === 1, rotulo(`a lupa filtra a agenda (${antes} → ${depois}, "${alvo}")`));
+    await p.locator('.barra-topo .busca.lupa input').fill('zzzqqq');
+    const nada = p.locator('.secao-trello .nada-na-busca');
+    await nada.waitFor({ timeout: 5000 });
+    conferir((await nada.textContent()).trim() === 'nada com “zzzqqq” na agenda', rotulo(`sem nenhum, a agenda fica e diz à mão (${(await nada.textContent()).trim()})`));
+    conferir((await nada.evaluate((e) => getComputedStyle(e).fontFamily)).includes('Caveat'), rotulo('o vazio da busca à mão, em Caveat'));
+    if (CAPTURAS) await p.screenshot({ path: `${CAPTURAS}/agenda-busca-vazia.png` });
+    await p.keyboard.press('Escape');
+    await p.waitForTimeout(700);
+    conferir((await cards.count()) === antes, rotulo('o Esc limpa e a agenda volta inteira'));
+    conferir(erros.length === 0, rotulo(`nenhum erro na página${erros.length ? `: ${erros.join(' | ')}` : ''}`));
+  } finally {
+    await ctx.close();
   }
 }
 
@@ -1321,6 +1416,17 @@ async function principal() {
       await fetch(`${amb.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': LIA } });
       return void (await campanhaNaAgenda(navegador, amb.url, conferir));
     }
+    // SO=card roda só o card aberto no centro, a busca e o apelido (#171)
+    if (process.env.SO === 'card') {
+      await fetch(`${amb.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': LIA } });
+      await linhaDoTempo(navegador, amb.url, conferir);
+      await campanhaNaAgenda(navegador, amb.url, conferir);
+      await buscaNaAgenda(navegador, amb.url, conferir);
+      await apelidoNaAgenda(navegador, amb.url, amb.api, conferir);
+      await apelidoPeloLapis(navegador, amb.url, conferir);
+      await letraEVersaoNaAgenda(navegador, amb.url, amb.api, conferir);
+      return;
+    }
     for (const nome of ['iPhone 13', 'Galaxy S24']) medicao[nome] = await gestos(navegador, amb.url, nome, conferir);
     // no computador, o tour da revisão já visto (senão o convite cobre a tela)
     await fetch(`${amb.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': LIA } });
@@ -1329,6 +1435,7 @@ async function principal() {
     await criterio(navegador, amb.url, conferir);
     await linhaDoTempo(navegador, amb.url, conferir);
     await campanhaNaAgenda(navegador, amb.url, conferir);
+    await buscaNaAgenda(navegador, amb.url, conferir);
     await semearRevisao(amb.api);
     await encolhida(navegador, amb.url, conferir);
     await apelidoNaAgenda(navegador, amb.url, amb.api, conferir);

@@ -34,11 +34,59 @@ export function Riscado({ children, traco = 0, className = '' }: { children: Rea
 export const tracoDe = (id: string) => [...id].reduce((h, c) => h + c.charCodeAt(0), 0);
 
 /**
- * A bolinha de estado (#172): o pontinho cheio da etapa, o mesmo da agenda No Trello e da Pauta da edição. A cor vem do
- * estado (produzindo, aprovacao, entregue, entrada, arquivada); o resto (o "sem card" da pauta) é a bolinha neutra.
+ * A bolinha de estado (#172, #171): o pontinho cheio da etapa, a mesma em todas as telas (a agenda No Trello, a Pauta,
+ * as Produções, a busca, o card aberto e a ficha do filme). A cor vem do estado: a entrada neutra, produzindo em
+ * --ultra, aprovação, entregue em --ok, arquivada; o resto é a bolinha neutra. Na ficha, o "card" e o "sem card" vêm
+ * vazados.
+ * @param tam 'pequena' (6 px, nas linhas e nos cards) ou 'ficha' (8 px, na ficha e no card aberto)
  */
-export function BolinhaDeEstado({ estado, className = '' }: { estado: string; className?: string }) {
-  return <i className={`bolinha-estado ${estado}${className ? ` ${className}` : ''}`} data-estado={estado} aria-hidden="true" />;
+export function BolinhaDeEstado({ estado, tam = 'pequena', className = '' }: { estado: string; tam?: 'pequena' | 'ficha'; className?: string }) {
+  return <i className={`bolinha-estado ${estado}${tam === 'ficha' ? ' ficha' : ''}${className ? ` ${className}` : ''}`} data-estado={estado} aria-hidden="true" />;
+}
+
+/**
+ * O vazio à mão (#171): o texto curto em Caveat, meio torto, no lugar de uma lista, de uma coluna ou de uma busca que
+ * não tem nada ("nada aqui", "ninguém", "nada com “x”"). Um só desenho em todas as telas; os vazios que explicam
+ * (os de formulário) ficam no texto comum.
+ * @param pequeno a medida das células e das colunas estreitas
+ * @param como a marca (p, li ou span), para caber na lista de quem usa
+ */
+export function Vazio({ children, pequeno = false, como: Como = 'p', className = '' }: { children: React.ReactNode; pequeno?: boolean; como?: 'p' | 'li' | 'span'; className?: string }) {
+  return <Como className={`vazio-a-mao${pequeno ? ' pequeno' : ''}${className ? ` ${className}` : ''}`}>{children}</Como>;
+}
+
+/**
+ * O número da sua tarefa, circulado à caneta em `--ultra` (#171): um por tela (o "5 de 11" do Andamento, o da Minha
+ * pauta, os pendentes dos Padeiros). O traço é o da contagem de artes da fila; ao chegar, o círculo se escreve.
+ */
+export function NumeroCirculado({ children, traco = 0, className = '' }: { children: React.ReactNode; traco?: number; className?: string }) {
+  return (
+    <span className={`numero-circulado${className ? ` ${className}` : ''}`}>
+      {children}
+      <svg viewBox="0 0 64 44" preserveAspectRatio="none" aria-hidden="true">
+        <path pathLength={1} d={RABISCOS[traco % RABISCOS.length]} />
+      </svg>
+    </span>
+  );
+}
+
+/** O "você" à mão, em --ultra, ao lado do que é seu (a sua linha na Pauta, o seu card em Produções, #171). */
+export function VoceAMao() {
+  return <span className="voce-a-mao">você</span>;
+}
+
+/** "hoje", "amanhã" ou "ontem" à mão, em --ultra, ao lado do dia (a fita do Dia da Pauta, o Montar a pauta, #171). */
+export function RelativoAMao({ rel, className = '' }: { rel: string; className?: string }) {
+  return rel ? <span className={`rel-a-mao${className ? ` ${className}` : ''}`}>{rel}</span> : null;
+}
+
+/** O vazio da busca, à mão: "nada com “x”", e onde se buscou ("na fila"). */
+export function NadaNaBusca({ termo, onde, className = '' }: { termo: string; onde?: string; className?: string }) {
+  return (
+    <Vazio className={`nada-na-busca${className ? ` ${className}` : ''}`}>
+      nada com “{termo.trim()}”{onde ? ` ${onde}` : ''}
+    </Vazio>
+  );
 }
 
 /** A dica da palavra "prioridade" ao lado da claquete marcada (a ficha da fila e o topo da revisão). */
@@ -694,7 +742,7 @@ export function EscolhaDeNome({ rotulo, valor, opcoes, mudar, semente, palpite, 
             {sugeridos.length > 0 && filtradas.length > 0 && <li className="sep" role="presentation" />}
             {filtradas.map((o, i) => item(o, sugeridos.length + i))}
             {livre && item(livre, sugeridos.length + filtradas.length)}
-            {!itens.length && <li className="nada">Ninguém com esse nome</li>}
+            {!itens.length && <Vazio como="li" pequeno className="nada">ninguém com esse nome</Vazio>}
           </ul>
           {valor && (
             <button type="button" className="escolha-nome-limpar" onClick={() => escolher('')}>

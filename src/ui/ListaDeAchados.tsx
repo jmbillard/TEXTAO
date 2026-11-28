@@ -1,16 +1,14 @@
 import { useRef, type CSSProperties, type ReactNode } from 'react';
 import { useDeslize } from './movimentoDasProducoes';
+import { Vazio } from './pecas';
 import './listaDeAchados.css';
+import { CASCATA_MS, NA_CASCATA } from './cena';
 
 /* A lista dos achados da lupa, no lugar do que a tela mostrava (a busca de Produções, #161, e a da agenda de filmes,
    #182): o topo com o que foi achado, a dica e o fio (que corre enquanto busca), o "nada" e as linhas. A lista chega e
    sai esmaecendo e subindo de leve, as linhas em cascata; ao refinar o termo, as que ficam deslizam para o lugar novo
    (o deslize da tela, #159) e as que chegam sobem. Cada tela dá as linhas dela (o botão que abre o card). */
 
-/** O intervalo da cascata das linhas que chegam, de uma para a outra, e quantas entram nela (as de baixo chegam com a
-    última). */
-const CASCATA_MS = 28;
-const NA_CASCATA = 12;
 
 interface Props<T> {
   itens: readonly T[];
@@ -22,7 +20,7 @@ interface Props<T> {
   /** o que foi achado, no título ("3 produções com «festa»"), ou a falha */
   titulo: ReactNode;
   dica: ReactNode;
-  /** o que escrever quando nada foi achado; null enquanto não há resposta */
+  /** o que escrever quando nada foi achado, à mão (o Vazio); null enquanto não há resposta ou quando há achados */
   nada: ReactNode | null;
   saindo: boolean;
   buscando?: boolean;
@@ -51,7 +49,7 @@ export function ListaDeAchados<T>({ itens, chave, linha, dados, titulo, dica, na
         <span className="prod-busca-dica">{dica}</span>
         <i className="prod-busca-fio" aria-hidden="true" />
       </header>
-      {nada}
+      {nada != null && <Vazio className="prod-busca-nada">{nada}</Vazio>}
       <ol ref={lista} className="prod-achados">
         {itens.map((x, i) => (
           <li key={ids[i]} className="prod-achado" data-achado={ids[i]} {...dados?.(x)} style={{ '--atraso': `${atrasos.current.get(ids[i]) ?? 0}ms` } as CSSProperties}>

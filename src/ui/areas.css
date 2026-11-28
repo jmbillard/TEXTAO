@@ -6,7 +6,7 @@
 .caminho-area-barra { font: 300 30px/1 var(--sans); color: var(--regua-forte); margin: 0 4px 0 0; position: relative; top: -1px; user-select: none; }
 .seletor-area {
   display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 8px; border: 0; border-radius: 10px; background: none;
-  font: 500 25px/1 var(--sans); letter-spacing: -0.02em; color: var(--tinta2); transition: background 0.15s, color 0.15s;
+  font: 500 25px/1 var(--sans); letter-spacing: -0.02em; color: var(--tinta2); transition: background 0.15s var(--suave), color 0.15s var(--suave);
 }
 .seletor-area:hover, .seletor-area[aria-expanded='true'] { background: var(--neutro); color: var(--tinta); }
 .seletor-area svg { color: var(--tinta3); margin-top: 2px; }
@@ -18,7 +18,7 @@
 }
 .area-item {
   display: grid; grid-template-columns: 36px minmax(0, 1fr) 18px; gap: 2px 12px; align-items: center; width: 100%; padding: 10px; border: 0;
-  border-radius: 10px; background: none; color: inherit; text-align: left; transition: background 0.1s;
+  border-radius: 10px; background: none; color: inherit; text-align: left; transition: background 0.1s var(--suave);
 }
 .area-item:hover { background: var(--neutro); }
 .area-item[aria-checked='true'] { background: var(--ultra-suave); }
@@ -66,7 +66,7 @@
 .exibir-rotulo { margin-right: 4px; }
 .exibir button {
   display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 9px; border: 0; border-radius: 8px; background: none;
-  color: var(--tinta3); font: 500 12.5px var(--sans); transition: background 0.12s, color 0.12s;
+  color: var(--tinta3); font: 500 12.5px var(--sans); transition: background 0.12s var(--suave), color 0.12s var(--suave);
 }
 .exibir button:hover { color: var(--tinta); }
 .exibir button[aria-pressed='true'] { background: var(--neutro); color: var(--tinta); font-weight: 600; }
@@ -87,13 +87,13 @@
 .cartao-meu { background: var(--papel); border: 1px solid var(--regua); border-radius: 10px; padding: 9px 10px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .cartao-meu b { font: 600 13px/1.3 var(--mono); overflow-wrap: anywhere; }
 .cartao-meu span { font-size: 12px; line-height: 1.4; color: var(--tinta2); overflow-wrap: anywhere; }
-.coluna-vazia { padding: 0 4px; font-size: 12.5px; color: var(--tinta3); }
+.coluna-vazia { padding: 0 4px; }
 
 /* por estado: a faixa do ciclo (quantos em cada estado; um toque mostra só aquele) e a lista agrupada */
 .faixa-ciclo { display: grid; grid-template-columns: 1.3fr repeat(4, 1fr); gap: 4px; margin: 0 0 -16px; }
 .seg-ciclo {
   border: 0; background: var(--papel); border-radius: 10px; padding: 10px 12px 9px; text-align: left; color: inherit;
-  box-shadow: inset 0 0 0 1px var(--regua); display: flex; flex-direction: column; gap: 2px; min-width: 0; transition: box-shadow 0.12s;
+  box-shadow: inset 0 0 0 1px var(--regua); display: flex; flex-direction: column; gap: 2px; min-width: 0; transition: box-shadow 0.12s var(--suave);
 }
 button.seg-ciclo:hover { box-shadow: inset 0 0 0 1px var(--regua-forte); }
 .seg-ciclo b { font: 400 26px/1 var(--serifa); }
@@ -142,7 +142,7 @@ button.seg-ciclo:hover { box-shadow: inset 0 0 0 1px var(--regua-forte); }
 .caminhos-do-topo { display: inline-flex; align-items: center; gap: 2px; flex: none; margin-left: 8px; }
 .caminhos-do-topo > a {
   position: relative; display: inline-flex; align-items: center; height: 36px; padding: 0 9.5px; border-radius: 10px;
-  color: var(--tinta3); font: 500 14px var(--sans); text-decoration: none; white-space: nowrap; transition: color 0.25s, background-color 0.2s;
+  color: var(--tinta3); font: 500 14px var(--sans); text-decoration: none; white-space: nowrap; transition: color 0.25s var(--suave), background-color 0.2s var(--suave);
 }
 .caminhos-do-topo > a:hover { background: var(--neutro); color: var(--tinta); }
 .caminhos-do-topo > a:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
@@ -162,11 +162,11 @@ button.seg-ciclo:hover { box-shadow: inset 0 0 0 1px var(--regua-forte); }
    têm a mesma duração, para os ícones depois dos dois deslizarem num movimento só */
 .caminho-nome {
   display: grid; grid-template-columns: 0fr; overflow-x: clip; overflow-y: visible; opacity: 0;
-  transition: grid-template-columns 0.5s var(--suave), opacity 0.16s;
+  transition: grid-template-columns 0.5s var(--suave), opacity 0.16s var(--suave);
 }
 .caminho-nome > span { min-width: 0; }
 .caminho-texto { position: relative; display: inline-block; padding: 0 2.5px 0 7px; color: var(--tinta); font-weight: 600; }
-.caminhos-do-topo > a.aberto .caminho-nome { grid-template-columns: 1fr; opacity: 1; transition: grid-template-columns 0.5s var(--suave), opacity 0.3s 0.1s; }
+.caminhos-do-topo > a.aberto .caminho-nome { grid-template-columns: 1fr; opacity: 1; transition: grid-template-columns 0.5s var(--suave), opacity 0.3s 0.1s var(--suave); }
 .caminho-nome .sub { position: absolute; left: 5px; top: calc(100% + 1px); width: calc(100% - 6px); height: 8px; overflow: visible; }
 /* o traço do rabisco é o das abas dos Cadastros (estilos.css); aqui, só começa depois, com o nome já abrindo */
 .caminho-nome .sub path { animation-delay: 0.22s; }
@@ -175,7 +175,7 @@ button.seg-ciclo:hover { box-shadow: inset 0 0 0 1px var(--regua-forte); }
 /* o aviso de filme para revisar (#156, #157): a bolinha laranja no canto do ícone dos Filmes, que surge com um pulo */
 .caminho-aviso {
   position: absolute; top: -3px; right: -4px; width: 8px; height: 8px; border-radius: 50%; background: var(--ultra);
-  box-shadow: 0 0 0 2px var(--papel); transition: box-shadow 0.2s; animation: caminho-aviso 0.5s var(--suave) both;
+  box-shadow: 0 0 0 2px var(--papel); transition: box-shadow 0.2s var(--suave); animation: caminho-aviso 0.5s var(--suave) both;
 }
 .caminho-aviso::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--ultra); animation: caminho-aviso-onda 1.2s 0.4s ease-out 2 both; }
 .caminhos-do-topo > a:hover .caminho-aviso { box-shadow: 0 0 0 2px var(--neutro); }
@@ -185,7 +185,7 @@ button.seg-ciclo:hover { box-shadow: inset 0 0 0 1px var(--regua-forte); }
 .caminhos-do-topo > a::after {
   content: attr(data-dica); position: absolute; top: calc(100% + 8px); left: 50%; z-index: 50; white-space: nowrap; pointer-events: none;
   background: var(--tinta); color: var(--papel); font: 500 12px/1.3 var(--sans); padding: 6px 9px; border-radius: 8px;
-  box-shadow: var(--sombra-menu); opacity: 0; transform: translate(-50%, -3px); transition: opacity 0.15s, transform 0.15s var(--suave);
+  box-shadow: var(--sombra-menu); opacity: 0; transform: translate(-50%, -3px); transition: opacity 0.15s var(--suave), transform 0.15s var(--suave);
 }
 .caminhos-do-topo > a:focus-visible::after { opacity: 1; transform: translate(-50%, 0); transition-delay: 0.1s; }
 @media (hover: hover) { .caminhos-do-topo > a:hover::after { opacity: 1; transform: translate(-50%, 0); transition-delay: 0.35s; } }

@@ -18,6 +18,21 @@ export const dataCurta = (iso: string) => {
 };
 
 /** "sáb, 11/07": o dia da semana ajuda a bater o olho na exibição. */
+const SEMANA_CURTA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+/** O dia no padrão da agenda (#171): "sex 27/11" (do dia AAAA-MM-DD, ou do começo de um instante ISO). */
+export const diaDaAgenda = (iso: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return iso;
+  return `${SEMANA_CURTA[new Date(+m[1], +m[2] - 1, +m[3]).getDay()]} ${m[3]}/${m[2]}`;
+};
+/** Um instante no padrão da agenda, no fuso de quem vê (#171): "sex 27/11 23h35". */
+export const instanteDaAgenda = (iso: string) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  return `${SEMANA_CURTA[d.getDay()]} ${p2(d.getDate())}/${p2(d.getMonth() + 1)} ${d.getHours()}h${p2(d.getMinutes())}`;
+};
+
 export const dataCurtaComDia = (iso: string) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   if (!m) return '';

@@ -13,7 +13,7 @@
 .prod-busca.buscando .prod-busca-fio::after { opacity: 1; animation: correr-fio 0.9s var(--suave) infinite; }
 @keyframes correr-fio { to { transform: translateX(340%); } }
 .prod-busca-nada { margin: 6px 4px; }
-.prod-achados { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; transition: opacity 0.18s; }
+.prod-achados { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; transition: opacity 0.18s var(--suave); }
 /* buscando um termo novo, os achados de antes ficam à vista, mais apagados, até chegarem os novos */
 .prod-busca.buscando .prod-achados { opacity: 0.6; }
 .prod-achado { animation: surgir-achado var(--dur) var(--suave) backwards; animation-delay: var(--atraso, 0ms); }
@@ -22,11 +22,12 @@
 .prod-achado-abrir {
   width: 100%; box-sizing: border-box; display: grid; grid-template-columns: 112px minmax(0, 1.7fr) 52px minmax(0, 1fr) 150px; align-items: center; gap: 4px 16px;
   padding: 10px 14px; border-radius: 10px; border: 1px solid var(--regua); background: var(--papel); color: var(--tinta); text-align: left; cursor: pointer; font: inherit;
-  transition: border-color 0.18s, box-shadow 0.18s var(--suave), transform 0.18s var(--suave);
+  transition: border-color 0.2s var(--suave), background-color 0.2s var(--suave);
 }
-.prod-achado-abrir:hover { border-color: var(--regua-forte); transform: translateY(-1px); box-shadow: 0 1px 2px rgb(26 25 22 / 6%), 0 4px 10px rgb(26 25 22 / 7%); }
+/* o hover do card da agenda (#171): só a borda escurece, sem subir nem sombra */
+.prod-achado-abrir:hover { border-color: var(--regua-forte); }
 .prod-achado-abrir:focus-visible { outline: 2px solid var(--ultra); outline-offset: 1px; }
 /* a etapa numa bolinha, com as cores das colunas */
 .prod-achado-etapa { display: inline-flex; align-items: center; gap: 7px; font: 600 11px var(--sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--tinta2); white-space: nowrap; }
-.prod-achado-etapa i { width: 7px; height: 7px; border-radius: 50%; background: var(--tinta3); flex: none; }
+.prod-achado-etapa i:not(.bolinha-estado) { width: 7px; height: 7px; border-radius: 50%; background: var(--tinta3); flex: none; }
 .prod-busca-mais { align-self: center; margin-top: 6px; animation: surgir-achado var(--dur) var(--suave) backwards; }

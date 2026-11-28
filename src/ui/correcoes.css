@@ -53,7 +53,9 @@
 
 /* ---------- aplicar e desfazer (#115): marcar, o resultado, as etiquetas, a caixinha de desfazer e o registro ---------- */
 .cor-aviso { margin: 0 0 14px; max-width: 86ch; padding: 8px 12px; border-radius: 8px; background: var(--neutro); color: var(--tinta2); font: 500 13.5px/1.5 var(--sans); }
-.cor-resultado { margin: 0 0 14px; max-width: 86ch; font: 500 14px/1.5 var(--sans); color: var(--tinta); }
+.cor-resultado { margin: 0 0 14px; max-width: 86ch; font: 500 14px/1.5 var(--sans); color: var(--tinta); animation: surgir 0.25s var(--suave); }
+/* as linhas que chegam (a releitura depois de aplicar ou desfazer) sobem de leve, sem estalo (#171) */
+.cor-tabela tbody tr { animation: surgir 0.25s var(--suave) backwards; }
 .cor-aplicar { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin: 0 0 8px; }
 .cor-aplicar .botao { height: 32px; font-size: 13px; }
 .cor-marcadas { margin-right: auto; font: 500 13px var(--sans); color: var(--tinta3); font-variant-numeric: tabular-nums; }
@@ -68,17 +70,6 @@
 .cor-registro .cor-estado .botao { height: 30px; font-size: 13px; }
 .cor-registro tr.desfeita .cor-claquete { color: var(--tinta3); }
 .cor-registro .cfg-falha { margin: 6px 0 0; }
-/* a caixinha de desfazer, embaixo, no meio da janela (a mesma das Produções) */
-.cor-desfazer {
-  position: fixed; left: 50%; bottom: 24px; z-index: 30; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 12px; max-width: min(560px, calc(100vw - 32px)); box-sizing: border-box;
-  padding: 8px 8px 8px 16px; border-radius: 12px; background: var(--tinta); color: var(--papel); box-shadow: var(--sombra-folha);
-  font: 500 13.5px/1.35 var(--sans);
-}
-.cor-desfazer-texto { min-width: 0; overflow-wrap: anywhere; }
-.cor-desfazer-botao { flex: none; background: var(--papel); border-color: var(--papel); color: var(--tinta); font-weight: 600; }
-.cor-desfazer-fechar { flex: none; min-width: 32px; color: inherit; font-size: 18px; line-height: 1; opacity: 0.8; }
-.cor-desfazer-fechar:hover { opacity: 1; }
 
 /* ---------- no celular ---------- */
 .no-celular .cor-resumo { font-size: 15.5px; }
