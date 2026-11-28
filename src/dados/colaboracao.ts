@@ -1,5 +1,6 @@
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
+import * as dec from 'lib0/decoding';
 import { parametrosDoPerfil } from './armazenamento';
 
 /* Edição simultânea. Cada roteiro tem um documento compartilhado (Yjs) com duas partes:
@@ -10,14 +11,44 @@ export interface Sala {
   doc: Y.Doc;
   provedor: WebsocketProvider;
   meta: Y.Map<unknown>;
+  /** Os comentários ao vivo do Roteiro escrito no PROMeiro (#192), num mapa à parte da mesma sala (id → comentário).
+      Quem só comenta não escreve pela sala: o comentário entra por uma rota e o servidor o põe aqui (`app.naSala`). */
+  comentarios: Y.Map<unknown>;
+  /** Avisa quando a sala gravou (só na sala do Roteiro escrito, #191); devolve a função que para de avisar. */
+  aoGravar: (avisar: () => void) => () => void;
+  /** Há o que esta aba mudou e a sala ainda não gravou. */
+  pendente: () => boolean;
 }
+
+/** A mensagem da sala do Roteiro escrito (#191): gravou, com o vetor de estado do que gravou (servidor/app.mjs). */
+const MSG_GRAVADO = 4;
 
 export function abrirSala(id: string): Sala {
   const doc = new Y.Doc();
   const base = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/colab`;
   const provedor = new WebsocketProvider(base, id, doc, { connect: false, params: parametrosDoPerfil() });
-  return { doc, provedor, meta: doc.getMap('meta') };
+  let gravado = new Map<number, number>();
+  const ouvintes = new Set<() => void>();
+  provedor.messageHandlers[MSG_GRAVADO] = (_e, d) => {
+    gravado = Y.decodeStateVector(dec.readVarUint8Array(d));
+    ouvintes.forEach((f) => f());
+  };
+  const meu = () => Y.decodeStateVector(Y.encodeStateVector(doc)).get(doc.clientID) ?? 0;
+  return {
+    doc,
+    provedor,
+    meta: doc.getMap('meta'),
+    comentarios: doc.getMap('comentarios'),
+    aoGravar: (avisar) => {
+      ouvintes.add(avisar);
+      return () => void ouvintes.delete(avisar);
+    },
+    pendente: () => meu() > (gravado.get(doc.clientID) ?? 0),
+  };
 }
+
+/** A sala ainda não recebeu nada: nem texto, nem metadados (ninguém a preencheu). */
+export const salaVazia = (sala: Sala) => sala.doc.getXmlFragment('doc').length === 0 && sala.meta.size === 0;
 
 /** Cores de destaque que leem bem como texto e como grifo, nos dois temas. Nenhuma é o laranja do app. */
 export const PALETA: { cor: string; nome: string }[] = [

@@ -65,6 +65,9 @@ async function buscarNoTeable(url, init = {}) {
 
 async function entrar(navegador, url, hash, email, opcoes = {}) {
   const ctx = await navegador.newContext({ extraHTTPHeaders: { 'cf-access-authenticated-user-email': email }, ...(CAPTURAS ? { deviceScaleFactor: 2 } : {}), ...opcoes });
+  // a folha se salva pela sala ao vivo (#191), e o WebSocket do navegador não leva o cabeçalho: o servidor do teste lê
+  // o e-mail do cookie
+  await ctx.addCookies([{ name: 'e2e-email', value: encodeURIComponent(email), url }]);
   await ctx.route('**/api/vocabulario', (r) => r.fulfill({ json: VOCAB }));
   await ctx.route((u) => u.pathname === '/api/eu/tour', (r) => r.fulfill({ json: { ok: true } }));
   const p = await ctx.newPage();

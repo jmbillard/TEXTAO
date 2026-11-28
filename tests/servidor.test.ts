@@ -16,6 +16,7 @@ import { comTabelas } from '../servidor/tabelas-do-teable.mjs';
 
 let servidor: Server;
 let base = '';
+let naSala: (id: string, mudar: (doc: Y.Doc) => void) => void;
 const db = abrirBanco(':memory:');
 const como = (email: string) => (caminho: string, init: RequestInit = {}) =>
   fetch(base + caminho, { ...init, headers: { 'cf-access-authenticated-user-email': email, 'content-type': 'application/json', ...init.headers } });
@@ -29,6 +30,7 @@ const salvar = (quem: typeof ana, id: string, corpo: object) => quem(`/api/rotei
 
 beforeAll(async () => {
   const app = criarApp({ db, env: { ACESSO: 'privado' } });
+  naSala = app.naSala;
   servidor = createServer(app);
   servidor.on('upgrade', app.upgrade);
   await new Promise<void>((ok) => servidor.listen(0, ok));
@@ -150,6 +152,108 @@ describe('servidor', () => {
     const d = await entrar('ana.lima@empresa.com');
     await pausa();
     expect(d.doc.getText('t').toString()).toBe('Ana. Beto. ');
+    d.ws.close();
+  });
+
+  it('edição simultânea no roteiro sendo escrito (#191): quem escreve sincroniza e a sala grava; quem só comenta recebe e não altera', async () => {
+    // a Ana é a autora; o Beto foi convidado a escrever; a Carla, a ler e comentar (como o designer)
+    await salvar(ana, 'escrito-juntos', { roteiro: { ...roteiro('do PUT').roteiro, compartilhadoCom: [{ email: 'beto@empresa.com', editar: true }, { email: 'carla@empresa.com', editar: false }] }, nArtes: 0 });
+    db.prepare("UPDATE roteiros SET escrito = 'sendo-escrito' WHERE id = ?").run('escrito-juntos');
+    expect(await (await beto('/api/roteiros/escrito-juntos')).json()).toMatchObject({ podeEditar: true });
+    expect(await (await como('carla@empresa.com')('/api/roteiros/escrito-juntos')).json()).toMatchObject({ podeEditar: false });
+
+    /** Entra na sala como o editor entra: o texto no fragmento "doc" e o título no mapa "meta". Guarda o que a sala
+        disse que gravou (a mensagem 4, com o vetor de estado gravado). */
+    const entrar = (email: string) =>
+      new Promise<{ ws: WebSocket; doc: Y.Doc; gravados: Map<number, number>[] }>((ok, erro) => {
+        const ws = new WebSocket(base.replace('http', 'ws') + '/api/colab/escrito-juntos', { headers: { 'cf-access-authenticated-user-email': email } });
+        const doc = new Y.Doc();
+        const gravados: Map<number, number>[] = [];
+        ws.binaryType = 'arraybuffer';
+        ws.on('message', (dados: ArrayBuffer) => {
+          const d = dec.createDecoder(new Uint8Array(dados));
+          const tipo = dec.readVarUint(d);
+          if (tipo === 4) gravados.push(Y.decodeStateVector(dec.readVarUint8Array(d)));
+          if (tipo !== 0) return;
+          const e = cod.createEncoder();
+          cod.writeVarUint(e, 0);
+          sinc.readSyncMessage(d, e, doc, ws);
+          if (cod.length(e) > 1) ws.send(cod.toUint8Array(e));
+        });
+        doc.on('update', (u: Uint8Array, origem: unknown) => {
+          if (origem === ws) return;
+          const e = cod.createEncoder();
+          cod.writeVarUint(e, 0);
+          sinc.writeUpdate(e, u);
+          ws.send(cod.toUint8Array(e));
+        });
+        ws.on('open', () => {
+          const e = cod.createEncoder();
+          cod.writeVarUint(e, 0);
+          sinc.writeSyncStep1(e, doc);
+          ws.send(cod.toUint8Array(e));
+          ok({ ws, doc, gravados });
+        });
+        ws.on('error', erro);
+      });
+    const trecho = (doc: Y.Doc, texto: string, tipo = 'locucao') => {
+      const p = new Y.XmlElement('paragraph');
+      p.setAttribute('tipo', tipo);
+      const t = new Y.XmlText();
+      t.insert(0, texto);
+      p.insert(0, [t]);
+      const f = doc.getXmlFragment('doc');
+      f.insert(f.length, [p]);
+    };
+    const textos = (doc: Y.Doc) => doc.getXmlFragment('doc').toArray().map((p) => (p as Y.XmlElement).toArray().map((t) => t.toString()).join(''));
+    const pausa = (ms = 150) => new Promise((ok) => setTimeout(ok, ms));
+
+    const a = await entrar('ana.lima@empresa.com');
+    const b = await entrar('beto@empresa.com');
+    const c = await entrar('carla@empresa.com');
+    trecho(a.doc, 'NESTE SÁBADO, A BRASA DECIDE.');
+    a.doc.getMap('meta').set('titulo', 'Desafio da Brasa');
+    await pausa();
+    trecho(b.doc, 'TRILHA: sobe a batida.', 'trilha');
+    await pausa();
+    // a Carla tenta escrever e trocar o título pela sala
+    trecho(c.doc, 'CARLA NÃO PODE.');
+    c.doc.getMap('meta').set('titulo', 'Título da Carla');
+    await pausa();
+    expect(textos(a.doc)).toEqual(['NESTE SÁBADO, A BRASA DECIDE.', 'TRILHA: sobe a batida.']);
+    expect(textos(b.doc)).toEqual(textos(a.doc));
+    expect(a.doc.getMap('meta').get('titulo')).toBe('Desafio da Brasa');
+    // a Carla recebeu o texto dos dois; o que ela digitou ficou só com ela
+    expect(textos(c.doc).slice(0, 2)).toEqual(textos(a.doc));
+
+    // a sala grava sozinha e avisa a quem está nela até onde gravou: o que a Ana escreveu já está gravado
+    for (let i = 0; i < 30 && !a.gravados.length; i++) await pausa(100);
+    expect(a.gravados.at(-1)?.get(a.doc.clientID)).toBe(Y.decodeStateVector(Y.encodeStateVector(a.doc)).get(a.doc.clientID));
+    // e o que se lê do roteiro é o texto da sala, não o do PUT; o status continua o de rascunho
+    const lido = await (await ana('/api/roteiros/escrito-juntos')).json();
+    expect(lido.doc.content.map((p: { content: { text: string }[] }) => p.content[0].text)).toEqual(['NESTE SÁBADO, A BRASA DECIDE.', 'TRILHA: sobe a batida.']);
+    expect(lido.doc.content[1].attrs).toMatchObject({ tipo: 'trilha' });
+    expect(lido.meta).toMatchObject({ titulo: 'Desafio da Brasa', status: 'rascunho' });
+    expect(lido.semear).toBeUndefined();
+
+    // com a sala aberta, um PUT da autora muda quem vê, mas não passa por cima do texto da sala
+    expect((await salvar(ana, 'escrito-juntos', { roteiro: { ...roteiro('POR CIMA').roteiro, compartilhadoCom: [{ email: 'beto@empresa.com', editar: true }, { email: 'carla@empresa.com', editar: false }] }, nArtes: 0 })).status).toBe(200);
+    // e quem só comenta continua recusado pela rota
+    expect((await salvar(como('carla@empresa.com'), 'escrito-juntos', roteiro('PELA ROTA'))).status).toBe(403);
+    for (const x of [a, b, c]) x.ws.close();
+    await pausa(300);
+    const depois = await (await beto('/api/roteiros/escrito-juntos')).json();
+    expect(depois.doc.content.map((p: { content: { text: string }[] }) => p.content[0].text)).toEqual(['NESTE SÁBADO, A BRASA DECIDE.', 'TRILHA: sobe a batida.']);
+    // fechada a sala, quem volta recebe o texto dela, sem a vez de preencher (não duplica)
+    expect(depois.semear).toBeUndefined();
+    const d = await entrar('ana.lima@empresa.com');
+    await pausa();
+    expect(textos(d.doc)).toEqual(['NESTE SÁBADO, A BRASA DECIDE.', 'TRILHA: sobe a batida.']);
+    // o caminho dos comentários ao vivo (#192): o servidor põe na sala, num mapa à parte, e quem está nela recebe
+    naSala('escrito-juntos', (doc) => doc.getMap('comentarios').set('c1', { texto: 'Cabe em 30 s?' }));
+    await pausa();
+    expect(d.doc.getMap('comentarios').get('c1')).toEqual({ texto: 'Cabe em 30 s?' });
+    expect(textos(d.doc)).toHaveLength(2);
     d.ws.close();
   });
 

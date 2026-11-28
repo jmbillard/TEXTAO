@@ -51,6 +51,7 @@ import { criarAreas, deTodos, dosMeusRoteiros } from './areas.mjs';
 import { metaDoNovo, podeComecar, regraDoEscrito, tituloLimpo } from '../src/modelo/escrito.ts';
 import { ancoraValida, mencoesDoTexto, podeResolver, quemAvisar, textoDoComentario } from '../src/modelo/comentarios.ts';
 import { criarComentarios, criarTabelasDosComentarios } from './comentarios.mjs';
+import { docDaSala, salaPreenchida } from './doc-da-sala.mjs';
 import { criarEscala, posicoesDoPedido, recadoDoPedido } from './escala.mjs';
 import { juntarODia } from '../src/modelo/juntarODia.ts';
 import { criarIlhas } from './ilhas.mjs';
@@ -96,6 +97,9 @@ import { VARIAVEIS_DOS_FILMES, conferirSecaoDosFilmes, filmesDoPedido, filmesSal
 
 const MSG_SINC = 0;
 const MSG_PRESENCA = 1;
+/** Só na sala do Roteiro escrito no PROMeiro (#191): a sala gravou, com o vetor de estado do que gravou. É a marca de
+    salvo da folha de escrita (src/dados/colaboracao.ts lê). */
+const MSG_GRAVADO = 4;
 
 const TIPOS = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
@@ -1420,13 +1424,17 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     if (guardado) Y.applyUpdate(doc, guardado);
     const pres = new presenca.Awareness(doc);
     pres.setLocalState(null);
-    sala = { doc, presenca: pres, conexoes: new Map(), prazo: null };
+    sala = { doc, presenca: pres, conexoes: new Map(), prazo: null, autor: null };
     const gravar = () => {
       sala.prazo = null;
       q.salvarYdoc.run(Y.encodeStateAsUpdate(doc), id);
+      gravarOEscrito(id, sala);
     };
     sala.gravar = gravar;
     doc.on('update', (atualizacao, origem) => {
+      // quem mudou o texto por último assina a gravação do roteiro escrito (#191)
+      const de = sala.conexoes.get(origem);
+      if (de) sala.autor = de.eu;
       const e = cod.createEncoder();
       cod.writeVarUint(e, MSG_SINC);
       sinc.writeUpdate(e, atualizacao);
@@ -1446,6 +1454,49 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     });
     salas.set(id, sala);
     return sala;
+  }
+  /**
+   * O Roteiro escrito no PROMeiro se salva pela sala (#191), não pelo PUT: cada gravação da sala leva o texto e os
+   * metadados dela para o roteiro (o JSON que a lista, o histórico e o Enviar leem), com a mesma regra do PUT (sendo
+   * escrito, o status é o de rascunho; as versões lidas nas artes; a versão a cada 5 min), e avisa quem está na sala até
+   * onde gravou (MSG_GRAVADO, a marca de salvo da folha). O roteiro de fora segue salvando pelo PUT.
+   */
+  function gravarOEscrito(id, sala) {
+    const linha = q.um.get(id);
+    if (!linha?.escrito || !salaPreenchida(sala.doc)) return;
+    const mapa = sala.doc.getMap('meta');
+    const r = { meta: { ...JSON.parse(linha.meta), ...(mapa.toJSON()) }, doc: docDaSala(sala.doc) };
+    if (linha.escrito === 'sendo-escrito') r.meta.status = 'rascunho';
+    const meta = JSON.stringify(r.meta);
+    const doc = JSON.stringify(r.doc);
+    if (meta !== linha.meta || doc !== linha.doc) {
+      const agora = new Date().toISOString();
+      q.conteudo.run(meta, doc, linha.n_artes, agora, id);
+      q.versoesLidas.run(JSON.stringify(versoesLidas(r.meta, r.doc)), id);
+      versionar(id, sala.autor ?? { email: linha.dono_email, nome: linha.dono_nome }, meta, doc, '', agora);
+    }
+    const e = cod.createEncoder();
+    cod.writeVarUint(e, MSG_GRAVADO);
+    cod.writeVarUint8Array(e, Y.encodeStateVector(sala.doc));
+    for (const ws of sala.conexoes.keys()) enviar(ws, e);
+  }
+  /* O caminho dos comentários ao vivo (#192): eles moram na mesma sala, num mapa à parte ("comentarios", id → comentário),
+     para chegarem a quem está no roteiro na hora. Quem só comenta não escreve pela sala (o servidor descarta), então o
+     comentário entra por uma rota e o servidor o põe na sala com `naSala`: aberta, todos recebem; fechada, fica no
+     estado guardado para a próxima abertura. */
+  /**
+   * Muda o documento compartilhado do roteiro pelo servidor: o da sala aberta (quem está nela recebe na hora) ou o
+   * guardado. `mudar(doc)` faz a mudança (numa transação).
+   */
+  function naSala(id, mudar) {
+    const sala = salas.get(id);
+    if (sala) return void sala.doc.transact(() => mudar(sala.doc));
+    const doc = new Y.Doc();
+    const guardado = q.ydoc.get(id)?.ydoc;
+    if (guardado) Y.applyUpdate(doc, guardado);
+    doc.transact(() => mudar(doc));
+    q.salvarYdoc.run(Y.encodeStateAsUpdate(doc), id);
+    doc.destroy();
   }
   /** Copia os metadados para o documento compartilhado do roteiro (na memória, se a sala estiver aberta, ou no banco). */
   function metaNoYdoc(id, meta) {
@@ -3820,7 +3871,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       if (!podeLer) return json(res, 403, { erro: 'Você não tem acesso a este roteiro.' });
       const fora = { ...paraFora(atual, eu), podeEditar };
       // o documento compartilhado ainda está vazio: a primeira pessoa que pode editar o preenche (uma só, por 20 s)
-      const vazio = !atual.tem_ydoc && !(salas.get(id)?.doc.getXmlFragment('doc').length > 0);
+      const sala = salas.get(id);
+      const vazio = !atual.tem_ydoc && !(sala && salaPreenchida(sala.doc));
       const aba = String(req.headers['x-aba-do-editor'] ?? '').slice(0, 64);
       const reserva = reservas.get(id);
       const livre = !reserva || reserva.ate <= Date.now() || (!!aba && reserva.aba === aba);
@@ -3860,6 +3912,13 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // sendo escrito, o status é o de rascunho: só o Enviar (#194) o tira dali
       const sendoEscrito = atual?.escrito === 'sendo-escrito';
       if (sendoEscrito) r.meta = { ...r.meta, status: 'rascunho' };
+      // o Roteiro escrito no PROMeiro com a sala (aberta ou guardada) se salva por ela (#191): o PUT só muda quem vê, e
+      // o texto e os metadados ficam os da sala. Sem sala ainda (o de antes do #191), o PUT salva como antes
+      const pelaSala = !!atual?.escrito && (!!atual.tem_ydoc || salas.has(id));
+      if (pelaSala) {
+        r.meta = JSON.parse(atual.meta);
+        r.doc = JSON.parse(atual.doc);
+      }
       const agora = new Date().toISOString();
       const meta = JSON.stringify(r.meta);
       const doc = JSON.stringify(r.doc);
@@ -3898,12 +3957,9 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
         // texto trocado por fora da edição simultânea (versão nova do arquivo): o estado guardado da sala
         // ficaria por cima dele na próxima abertura; sem ninguém na sala, ele é descartado
         if (atual && motivo === 'substituiu a versão anterior' && !salas.get(id)?.conexoes.size) q.limparYdoc.run(id);
-        // o roteiro sendo escrito se salva por aqui (#189, ainda sem a sala ao vivo, que chega no #191): um estado
-        // guardado de sala que alguém tenha aberto ficaria por cima do texto na próxima abertura
-        else if (sendoEscrito && atual.tem_ydoc && !salas.get(id)?.conexoes.size) q.limparYdoc.run(id);
         // metadados mudados por fora do editor (atração reconhecida num cadastro, "manter as duas"): sem ninguém
         // na sala, o estado guardado dela recebe a mudança, senão a próxima abertura traria os valores antigos de volta
-        else if (atual && atual.meta !== meta && !salas.get(id)?.conexoes.size) metaNoYdoc(id, r.meta);
+        else if (atual && !pelaSala && atual.meta !== meta && !salas.get(id)?.conexoes.size) metaNoYdoc(id, r.meta);
         versionar(id, eu, meta, doc, motivo, agora);
         db.exec('COMMIT');
       } catch (e) {
@@ -4632,6 +4688,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
   };
   /** Ligue em `server.on('upgrade', app.upgrade)` para a edição simultânea e a fila ao vivo. */
   app.upgrade = upgrade;
+  // o caminho dos comentários ao vivo (#192): mudar o documento compartilhado do roteiro pelo servidor
+  app.naSala = naSala;
   app.cache = cache;
   app.mudarConfiguracao = mudarConfiguracao;
   /** Os módulos de agora (para os avisos da partida). */

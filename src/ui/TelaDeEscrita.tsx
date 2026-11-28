@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import History from '@tiptap/extension-history';
+import Collaboration from '@tiptap/extension-collaboration';
+import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import { armazenamento, type Leitura } from '../dados/armazenamento';
+import { abrirSala, corDe } from '../dados/colaboracao';
 import { extensoesDoRoteiro, prepararColagem, Teclado } from '../editor/extensoes';
 import { metaVazia, type Meta, type Pessoa, type Roteiro } from '../modelo/tipos';
 import { casoDaLeitura, LinkQuebrado } from './LinkQuebrado';
@@ -11,14 +14,18 @@ import { ComentariosNoTexto } from '../editor/comentarios';
 import { BolinhaDeEstado } from './pecas';
 import { Icone } from './icones';
 import { quandoComecou } from './util';
+import { Presentes } from './Filmes';
+import { useSalaDaEscrita } from './salaDaEscrita';
 import './escrita.css';
 
 /* O editor de escrita (#189, spec #186): o Roteiro sendo escrito no PROMeiro, numa folha corrida com o título no topo e
    sem claquete (ela é proposta no Enviar, #194). É o mesmo documento da revisão (o schema de `extensoesDoRoteiro`, com o
    tipo do trecho guardado no parágrafo) num outro modo: aqui a digitação é livre (sem a trava `SoMarcas`), e o roteiro
-   se salva sozinho, pelo PUT do roteiro, como o editor sem sala (a sala ao vivo chega no #191). A marca de salvo é a
-   bolinha laranja (`BolinhaDeEstado`), nunca um ✓. Quem não escreve lê, com a faixa que diz isso. A visibilidade é o
-   painel `Compartilhar` da revisão, com os textos do escrito.
+   se salva sozinho. Com o servidor, pela sala ao vivo da revisão (#191, `useSalaDaEscrita`): duas pessoas escrevem
+   juntas, com o cursor e o nome de cada uma, e a barra mostra quem está no roteiro; a sala grava e diz até onde gravou.
+   Sem o servidor, pelo PUT. A marca de salvo é a bolinha laranja (`BolinhaDeEstado`), nunca um ✓. Quem não escreve lê
+   (e recebe ao vivo), com a faixa que diz isso; o servidor descarta o que ele mandar pela sala. A visibilidade é o
+   painel `Compartilhar` da revisão, com os textos do escrito, e ela sim vai pelo PUT (só ela: o texto é o da sala).
 
    Os ganchos dos próximos tickets ficam marcados: a margem dos tipos e o "/" (#190), a sala e a presença no topo
    (#191), os comentários (#192), Texto/Colunas e o modo limpo (#193) e o Enviar (#194). */
@@ -87,20 +94,29 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
   // os comentários (#192): o pedido do botão Comentar e quantos estão abertos
   const [pedidoDeComentario, setPedidoDeComentario] = useState(0);
   const [abertos, setAbertos] = useState(0);
+  // a sala ao vivo (#191): só existe com o servidor; o exemplo do tour não chega aqui (ele não é escrito no PROMeiro)
+  const [sala] = useState(() => (armazenamento.tipo === 'servidor' ? abrirSala(inicial.id) : null));
 
   const editor = useEditor({
     extensions: [
       ...extensoesDoRoteiro(),
       // Ctrl+U marca a arte, como na revisão; o resto do teclado da escrita (o "/", Tab nos tipos) chega no #190
       Teclado.configure({ programa: () => estado.current.meta.programa }),
-      History.configure({ depth: 500 }),
       // o grifo dos trechos comentados (#192): decoração, o documento não muda
       ComentariosNoTexto,
+      // na sala, o texto é o do documento compartilhado (com o desfazer de cada um) e os cursores dos colegas
+      ...(sala
+        ? [
+            Collaboration.configure({ document: sala.doc, field: 'doc' }),
+            CollaborationCursor.configure({ provider: sala.provedor, user: { name: pessoa?.nome ?? 'Alguém', email: pessoa?.email ?? '', color: corDe(pessoa?.email ?? '') } }),
+          ]
+        : [History.configure({ depth: 500 })]),
     ],
-    content: inicial.doc,
-    editable: escreve,
+    // na sala, o texto chega dela, e a folha só libera a digitação depois disso (useSalaDaEscrita)
+    content: sala ? undefined : inicial.doc,
+    editable: escreve && !sala,
     // a folha abre com o cursor no texto, pronta para digitar (o título fica no topo, opcional)
-    autofocus: escreve ? 'end' : false,
+    autofocus: escreve && !sala ? 'end' : false,
     editorProps: {
       attributes: { class: 'texto texto-escrita', spellcheck: 'true', lang: 'pt-BR', 'aria-label': 'Texto do roteiro', ...(escreve ? {} : { 'aria-readonly': 'true' }) },
       transformPastedHTML: prepararColagem,
@@ -108,9 +124,18 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
     onCreate: ({ editor: e }) => setVazia(e.isEmpty),
     onUpdate: ({ editor: e }) => {
       setVazia(e.isEmpty);
-      mudou();
+      // na sala, quem salva é ela
+      if (!sala) mudou();
     },
   });
+  const { liberado, presentes, gravacao } = useSalaDaEscrita(sala, editor, {
+    inicial,
+    pessoa,
+    escreve,
+    aoMudarMeta: (m) => setMeta((antes) => ({ ...antes, ...m })),
+  });
+  // a marca de salvo junta a sala (o texto) e o PUT (quem vê)
+  const marca: Salvamento = salvamento === 'erro' || gravacao === 'sem-conexao' ? 'erro' : salvamento === 'salvando' || gravacao === 'salvando' ? 'salvando' : 'salvo';
 
   const mudou = () => {
     mexeu.current = true;
@@ -172,8 +197,11 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
   }, [meta.titulo]);
 
   const mudarTitulo = (valor: string) => {
-    setMeta((m) => ({ ...m, titulo: valor.replace(/\n/g, ' ') }));
-    mudou();
+    const t = valor.replace(/\n/g, ' ');
+    setMeta((m) => ({ ...m, titulo: t }));
+    // na sala, o título vai pelo mapa "meta" dela, ao vivo para quem está junto
+    if (sala) sala.doc.transact(() => sala.meta.set('titulo', t));
+    else mudou();
   };
   const compartilhar = (todos: boolean, lista: Convite[]) => {
     setPublico(todos);
@@ -205,15 +233,14 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
           <Icone nome="voltar" tam={14} traco={2} /> Roteiros
         </button>
         {escreve ? (
-          <span className="escrita-salvo" data-salvamento={salvamento} role="status" aria-live="polite" title={salvamento === 'salvo' ? 'O roteiro está salvo' : undefined}>
-            <BolinhaDeEstado estado={salvamento === 'salvo' ? 'salvou' : salvamento === 'erro' ? 'arquivada' : 'salvando'} />
-            {salvamento === 'salvo' ? 'salvo' : salvamento === 'erro' ? 'não salvou' : 'salvando'}
+          <span className="escrita-salvo" data-salvamento={marca} role="status" aria-live="polite" title={marca === 'salvo' ? 'O roteiro está salvo' : gravacao === 'sem-conexao' ? 'Sem conexão: o que você escreveu vai quando ela voltar' : undefined}>
+            <BolinhaDeEstado estado={marca === 'salvo' ? 'salvou' : marca === 'erro' ? 'arquivada' : 'salvando'} />
+            {marca === 'salvo' ? 'salvo' : gravacao === 'sem-conexao' ? 'sem conexão' : marca === 'erro' ? 'não salvou' : 'salvando'}
           </span>
         ) : (
           <span className="escrita-so-lendo-curto">só lendo</span>
         )}
         <span className="espaco" />
-        {/* #191: quem está no roteiro agora (a presença) entra aqui */}
         {/* #192: comentar o trecho selecionado (também Ctrl+Alt+M), para toda pessoa que lê o roteiro */}
         <button
           type="button"
@@ -228,6 +255,10 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
           <span className="rotulo">Comentar</span>
           {abertos > 0 && <span className="contagem" aria-label={`${abertos} abertos`}>{abertos}</span>}
         </button>
+        {/* quem mais está no roteiro agora (#191): as bolinhas da mesma peça da prévia, com as iniciais na cor de cada um */}
+        <span className="escrita-presentes" aria-live="polite">
+          <Presentes pessoas={presentes} texto />
+        </span>
         {meu ? (
           <span className="compartilhar escrita-visibilidade" ref={caixaDoPainel}>
             <button type="button" className={`visibilidade ${publico ? 'publico' : ''}`} aria-haspopup="dialog" aria-expanded={compartilhando} onClick={() => setCompartilhando((v) => !v)}>
@@ -252,7 +283,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
         </p>
       )}
       <main className="escrita">
-        <article className={`folha-escrita${vazia ? ' vazia' : ''}${escreve ? '' : ' so-leitura'}`} aria-label="Roteiro sendo escrito">
+        <article className={`folha-escrita${vazia ? ' vazia' : ''}${escreve ? '' : ' so-leitura'}${liberado ? '' : ' chegando'}`} aria-label="Roteiro sendo escrito" aria-busy={!liberado}>
           <header className="folha-escrita-cabeca">
             <p className="folha-escrita-sobre">
               Roteiro <span aria-hidden="true">·</span> sendo escrito
@@ -264,7 +295,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
               value={meta.titulo}
               placeholder="Título do roteiro"
               aria-label="Título do roteiro"
-              readOnly={!escreve}
+              readOnly={!escreve || !liberado}
               spellCheck
               lang="pt-BR"
               onChange={(e) => mudarTitulo(e.target.value)}
