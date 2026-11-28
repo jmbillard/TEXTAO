@@ -1,5 +1,5 @@
 import { Extension, Mark, Node, type Editor } from '@tiptap/core';
-import { Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state';
+import { Plugin, PluginKey, Selection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { AddMarkStep, RemoveMarkStep } from '@tiptap/pm/transform';
 import { ySyncPluginKey } from 'y-prosemirror';
@@ -407,12 +407,16 @@ export function dividirArte(editor: Editor, marca: Pick<MarcaNoDoc, 'id'>): numb
 /**
  * Na revisão o texto fica como chegou: só se marca e classifica (artes e etiquetas). Passa o que só mexe em marcas,
  * o que vem da edição simultânea e o que cai numa folha ainda vazia (colar o roteiro do Word).
+ *
+ * O cadeado (#188) destrava o texto: com `destravado()`, digitar, apagar e colar passam, e cada uma dessas mudanças
+ * passa antes por `comCadeado`. Hoje ela só deixa passar (num roteiro de fora, muda o texto da fila); é o ponto onde
+ * o #196 vai transformar a mudança num roteiro escrito no PROMeiro em sugestão. Devolver `false` recusa a mudança.
  */
-export const SoMarcas = Extension.create<{ aviso: () => void }>({
+export const SoMarcas = Extension.create<{ aviso: () => void; destravado: () => boolean; comCadeado: (tr: Transaction, state: EditorState) => boolean }>({
   name: 'soMarcas',
-  addOptions: () => ({ aviso: () => {} }),
+  addOptions: () => ({ aviso: () => {}, destravado: () => false, comCadeado: () => true }),
   addProseMirrorPlugins() {
-    const aviso = this.options.aviso;
+    const { aviso, destravado, comCadeado } = this.options;
     return [
       new Plugin({
         key: new PluginKey('soMarcas'),
@@ -420,6 +424,7 @@ export const SoMarcas = Extension.create<{ aviso: () => void }>({
           if (!tr.docChanged || tr.getMeta(ySyncPluginKey) || tr.getMeta('permitirTexto')) return true;
           if (!state.doc.textContent.trim()) return true;
           if (tr.steps.every((st) => st instanceof AddMarkStep || st instanceof RemoveMarkStep)) return true;
+          if (destravado()) return comCadeado(tr, state);
           aviso();
           return false;
         },
