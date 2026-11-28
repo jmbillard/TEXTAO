@@ -11,10 +11,11 @@ import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import type { Transaction } from '@tiptap/pm/state';
-import { abrirSala, corDe, ponteirosDaSala, presentes as listarPresentes, type Presente, type Sala } from '../dados/colaboracao';
+import { abrirSala, corDe, ponteirosDaSala, type Sala } from '../dados/colaboracao';
+import { useSalaAoVivo } from './salaAoVivo';
 import { Ponteiros, useMeuPonteiro, type PonteiroDeAlguem, type PosicaoPonteiro } from './ponteiros';
 import { meuCursor } from './cursores';
-import { armazenamento, atracaoNoServidor, atualizarVocabulario, baixarOriginal, consultarAcervo, consultarPauta, mandarParaTrello, palpitesDoRedator, quemNosRoteiros, roteiroDa, temTrello, type EnvioTrello, type Leitura, type PresencaNosRoteiros, type Resumo, type Versao } from '../dados/armazenamento';
+import { armazenamento, atracaoNoServidor, atualizarVocabulario, baixarOriginal, consultarAcervo, consultarPauta, mandarParaTrello, palpitesDoRedator, quemNosRoteiros, temTrello, type EnvioTrello, type Leitura, type PresencaNosRoteiros, type Resumo, type Versao } from '../dados/armazenamento';
 import { casoDaLeitura, LinkQuebrado } from './LinkQuebrado';
 import { Compartilhar, type Convite } from './Compartilhar';
 import {
@@ -460,11 +461,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   }, [comServidor, inicial.id]);
   // edição simultânea: só existe com servidor
   const [sala] = useState(() => (comServidor ? abrirSala(inicial.id) : null));
-  const [sincronizado, setSincronizado] = useState(!sala);
-  // com edição simultânea, o texto só está aqui depois de sincronizar e preencher: antes disso, nada é salvo
-  const [liberado, setLiberado] = useState(!sala);
   const alteracoes = useRef(0);
-  const [presentes, setPresentes] = useState<Presente[]>([]);
   const [publico, setPublico] = useState(!!inicial.publico);
   const [pessoas, setPessoas] = useState<Convite[]>(inicial.compartilhadoCom ?? []);
   const [compartilhando, setCompartilhando] = useState(false);
@@ -498,13 +495,6 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   // o celular (até 600px): uma página só, com a ficha e o "Para revisar" recolhíveis e o texto só de leitura
   const celular = useTelaDeCelular();
   const [fichaAberta, setFichaAberta] = useState(false);
-  // o cadeado só aparece para quem pode editar, fora do celular, e depois que o texto chegou da sala
-  const temCadeado = cadeadoNaRevisao({ podeEditar: !leitura, celular }) && liberado;
-  temCadeadoRef.current = temCadeado;
-  // girar o aparelho para o celular tira o cadeado: o texto volta a travar
-  useEffect(() => {
-    if (!temCadeado) setDestravado(false);
-  }, [temCadeado]);
   const [pendenciasAbertas, setPendenciasAbertas] = useState(false);
 
   const area = useRef<HTMLDivElement>(null);
@@ -512,8 +502,6 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   const revisao = useRef(inicial.revisao);
   const metaRef = useRef(meta);
   metaRef.current = meta;
-  const celularRef = useRef(celular);
-  celularRef.current = celular;
   const aoClicar = useRef<(pos: number) => void>(() => {});
 
   const editor = useEditor({
@@ -554,73 +542,26 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
     onSelectionUpdate: () => setSelVersao((v) => v + 1),
   });
 
-  // conexão com a sala
+  // a sala ao vivo, com a mesma regra da folha de escrita (useSalaAoVivo): com edição simultânea, o texto só está aqui
+  // depois de sincronizar e preencher; antes disso, nada é salvo. No celular, a folha libera só para leitura
+  const { sincronizado, liberado, presentes } = useSalaAoVivo(sala, editor, {
+    inicial,
+    pessoa,
+    escreve: !leitura,
+    editavel: !leitura && !celular,
+    aoMudarMeta: (m) => setMeta((antes) => ({ ...antes, ...m })),
+  });
+  // o texto que a sala preencheu (sem passar pelo onUpdate) entra nas contas da tela: as artes, a lista, o que salvar
   useEffect(() => {
-    if (!sala) return;
-    const aoSincronizar = (ok: boolean) => ok && setSincronizado(true);
-    // a presença muda a cada movimento de mouse dos colegas: só redesenha a tela quando muda quem está aqui
-    const aoMudarPresenca = () => {
-      const novo = listarPresentes(sala, pessoaRef.current?.email ?? '');
-      setPresentes((antes) => (JSON.stringify(antes) === JSON.stringify(novo) ? antes : novo));
-    };
-    const aoMudarMeta = (e: { transaction: { local: boolean } }) => {
-      if (!e.transaction.local) setMeta((m) => ({ ...m, ...(sala.meta.toJSON() as Partial<Meta>) }));
-    };
-    sala.provedor.on('sync', aoSincronizar);
-    sala.provedor.awareness.on('change', aoMudarPresenca);
-    sala.meta.observe(aoMudarMeta);
-    sala.provedor.connect();
-    const p = pessoaRef.current;
-    sala.provedor.awareness.setLocalStateField('user', { name: p?.nome ?? 'Alguém', email: p?.email ?? '', color: corDe(p?.email ?? '') });
-    return () => {
-      sala.provedor.off('sync', aoSincronizar);
-      sala.provedor.awareness.off('change', aoMudarPresenca);
-      sala.meta.unobserve(aoMudarMeta);
-      sala.provedor.disconnect();
-    };
-  }, [sala]);
-  // depois de sincronizar: preenche o documento na primeira vez e libera a digitação
+    if (sala && liberado) setDocVersao((v) => v + 1);
+  }, [sala, liberado]);
+  // o cadeado só aparece para quem pode editar, fora do celular, e depois que o texto chegou da sala
+  const temCadeado = cadeadoNaRevisao({ podeEditar: !leitura, celular }) && liberado;
+  temCadeadoRef.current = temCadeado;
+  // girar o aparelho para o celular tira o cadeado: o texto volta a travar
   useEffect(() => {
-    if (!sala || !editor || !sincronizado) return;
-    const vazio = () => sala.doc.getXmlFragment('doc').length === 0;
-    const preencher = (r: Roteiro) => {
-      editor.commands.setContent(r.doc, false);
-      sala.doc.transact(() => Object.entries(r.meta).forEach(([k, v]) => sala.meta.set(k, v)));
-      // preencher não é uma edição: a linha do tempo começa depois disso
-      (yUndoPluginKey.getState(editor.state) as { undoManager?: { clear: () => void } } | undefined)?.undoManager?.clear();
-    };
-    const liberar = () => {
-      if (sala.meta.size) setMeta((m) => ({ ...m, ...(sala.meta.toJSON() as Partial<Meta>) }));
-      editor.setEditable(!leitura && !celularRef.current);
-      setLiberado(true);
-      setDocVersao((v) => v + 1);
-    };
-    if (!vazio()) return liberar();
-    if (inicial.semear) {
-      preencher(inicial);
-      return liberar();
-    }
-    // Vazio, mas a vez de preencher é de outra sessão. Espera o texto chegar; se quem ia preencher
-    // desistiu, o servidor passa a vez. Enquanto isso a folha fica travada, para nada ser salvo por cima.
-    let ativo = true;
-    const tentar = async () => {
-      if (!ativo) return;
-      if (!vazio()) return liberar();
-      const r = roteiroDa(await armazenamento.ler(inicial.id));
-      if (!ativo) return;
-      if (!vazio()) return liberar();
-      if (r?.semear) {
-        preencher(r);
-        return liberar();
-      }
-      setTimeout(tentar, 2000);
-    };
-    const prazo = setTimeout(tentar, leitura ? 2000 : 600);
-    return () => {
-      ativo = false;
-      clearTimeout(prazo);
-    };
-  }, [sala, editor, sincronizado]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!temCadeado) setDestravado(false);
+  }, [temCadeado]);
 
   // no celular, o texto é só de leitura: nada de digitar, mas a seleção continua (é por ela que se marca a arte).
   // Girar o aparelho troca o modo; isso não é uma edição, então não avisa o onUpdate

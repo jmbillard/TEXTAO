@@ -5,13 +5,15 @@ import { armazenamento, roteiroDa } from '../dados/armazenamento';
 import { corDe, presentes as listarPresentes, salaVazia, type Presente, type Sala } from '../dados/colaboracao';
 import type { Meta, Pessoa, Roteiro } from '../modelo/tipos';
 
-/* A folha de escrita na sala ao vivo (#191, spec #186): a mesma sala do editor de revisão (Yjs por WebSocket,
-   src/dados/colaboracao.ts), com o texto no fragmento "doc" e o cabeçalho no mapa "meta". Para o Roteiro escrito no
-   PROMeiro, é a sala que salva (o servidor grava o texto dela no roteiro e diz até onde gravou), no lugar do PUT.
+/* A sala ao vivo de um roteiro (Yjs por WebSocket, src/dados/colaboracao.ts), com o texto no fragmento "doc" e o
+   cabeçalho no mapa "meta". É a mesma regra no editor de revisão e na folha de escrita (#191, spec #186): as duas telas
+   chamam este hook, e o que muda entre elas vem nas opções.
 
-   O preenchimento segue a regra da revisão: a sala vazia é preenchida uma vez só, pela aba que o servidor escolheu
-   (`semear`, a vez é da aba); as outras esperam o texto chegar e, se a aba da vez desistiu, perguntam de novo. Até lá a
-   folha fica travada, para nada ser escrito por cima de uma folha vazia (recarregar no meio não duplica o texto). */
+   O preenchimento: a sala vazia (sem texto e sem metadados, `salaVazia`) é preenchida uma vez só, pela aba que o
+   servidor escolheu (`semear`, a vez é da aba); as outras esperam o texto chegar e, se a aba da vez desistiu, perguntam
+   de novo. Até lá a folha fica travada (`liberado` falso), para nada ser escrito nem salvo por cima de uma folha vazia
+   (recarregar no meio não duplica o texto). Preencher e liberar não são edições: não passam pelo `onUpdate` do editor
+   nem entram no desfazer. */
 
 /** O que a sala diz da gravação: tudo gravado, gravando o que esta aba mudou, ou sem conexão com o que falta gravar. */
 export type GravacaoDaSala = 'salvo' | 'salvando' | 'sem-conexao';
@@ -19,18 +21,26 @@ export type GravacaoDaSala = 'salvo' | 'salvando' | 'sem-conexao';
 interface Opcoes {
   inicial: Roteiro;
   pessoa?: Pessoa;
+  /** quem abriu pode escrever no roteiro: pergunta logo se a vez de preencher passou para ele */
   escreve: boolean;
+  /** a folha fica editável ao liberar (padrão: `escreve`). Lido no momento de liberar; depois, quem muda o modo é a tela */
+  editavel?: boolean;
+  /** ao liberar uma folha editável, põe o cursor no fim do texto, pronta para digitar */
+  focarAoLiberar?: boolean;
   /** os metadados da sala (os que chegaram de outra pessoa, ou os que já estavam nela ao abrir) */
   aoMudarMeta: (meta: Partial<Meta>) => void;
 }
 
-export function useSalaDaEscrita(sala: Sala | null, editor: Editor | null, { inicial, pessoa, escreve, aoMudarMeta }: Opcoes) {
-  const [sincronizado, setSincronizado] = useState(false);
+export function useSalaAoVivo(sala: Sala | null, editor: Editor | null, { inicial, pessoa, escreve, editavel = escreve, focarAoLiberar = false, aoMudarMeta }: Opcoes) {
+  // sem sala, não há o que esperar: o texto é o do roteiro
+  const [sincronizado, setSincronizado] = useState(!sala);
   const [liberado, setLiberado] = useState(!sala);
   const [presentes, setPresentes] = useState<Presente[]>([]);
   const [gravacao, setGravacao] = useState<GravacaoDaSala>('salvo');
   const meta = useRef(aoMudarMeta);
   meta.current = aoMudarMeta;
+  const editavelRef = useRef(editavel);
+  editavelRef.current = editavel;
   const email = pessoa?.email ?? '';
   const nome = pessoa?.nome ?? '';
 
@@ -39,7 +49,7 @@ export function useSalaDaEscrita(sala: Sala | null, editor: Editor | null, { ini
     if (!sala) return;
     let conectado = false;
     const aoSincronizar = (ok: boolean) => ok && setSincronizado(true);
-    // a presença muda a cada tecla dos colegas (o cursor): só redesenha quando muda quem está aqui
+    // a presença muda a cada tecla e a cada movimento de mouse dos colegas: só redesenha quando muda quem está aqui
     const aoMudarPresenca = () => {
       const novo = listarPresentes(sala, email);
       setPresentes((antes) => (JSON.stringify(antes) === JSON.stringify(novo) ? antes : novo));
@@ -83,9 +93,9 @@ export function useSalaDaEscrita(sala: Sala | null, editor: Editor | null, { ini
     };
     const liberar = () => {
       if (sala.meta.size) meta.current(sala.meta.toJSON() as Partial<Meta>);
-      editor.setEditable(escreve, false);
-      // a folha abre com o cursor no texto, pronta para digitar
-      if (escreve) editor.commands.focus('end');
+      // mudar o modo não é uma edição: não avisa o onUpdate
+      editor.setEditable(editavelRef.current, false);
+      if (focarAoLiberar && editavelRef.current) editor.commands.focus('end');
       setLiberado(true);
     };
     if (!salaVazia(sala)) return liberar();
@@ -115,5 +125,5 @@ export function useSalaDaEscrita(sala: Sala | null, editor: Editor | null, { ini
     };
   }, [sala, editor, sincronizado]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { liberado, presentes, gravacao };
+  return { sincronizado, liberado, presentes, gravacao };
 }
