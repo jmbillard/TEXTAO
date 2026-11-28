@@ -107,11 +107,12 @@
 @keyframes balao-sobe { from { transform: translateY(100%); } }
 @media (prefers-reduced-motion: reduce) { .comentarios-da-folha.estreita .balao-comentario { animation: none; } }
 
-/* a folha larga guarda a margem dos balões à direita do texto, como no protótipo: a página cresce para caber */
+/* a folha larga guarda a margem dos balões à direita do texto, como no protótipo: a página cresce para caber (ao lado
+   da lista das artes, #190). Mais estreita, o balão abre por cima da folha (TELA_LARGA em ComentariosDaFolha.tsx). */
 .folha-escrita { --coluna-dos-comentarios: 0px; }
-@media (min-width: 1180px) {
-  .pagina-escrita .folha-escrita { --coluna-dos-comentarios: 290px; }
-  .pagina-escrita .escrita, .pagina-escrita .escrita-barra { max-width: 1290px; }
-  .pagina-escrita .escrita-so-lendo { max-width: 1226px; }
-  .pagina-escrita .folha-escrita-corpo { padding-right: calc(var(--coluna-dos-comentarios) + 28px); }
+@media (min-width: 1440px) {
+  .pagina-escrita .folha-escrita { --coluna-dos-comentarios: 280px; }
+  .pagina-escrita .escrita, .pagina-escrita .escrita-barra { max-width: 1580px; }
+  .pagina-escrita .escrita-so-lendo { max-width: 1516px; }
+  .pagina-escrita .folha-escrita-corpo { padding-right: calc(var(--coluna-dos-comentarios) + 24px); }
 }

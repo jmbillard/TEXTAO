@@ -1,5 +1,5 @@
 /* O editor de escrita (#189): o Roteiro sendo escrito, numa folha corrida de papel (o mesmo da revisão), com o título no
-   topo e a margem dos tipos à esquerda (vazia até o #190). Nada de "unha" e nada de ✓: o salvo é a bolinha laranja. */
+   topo e a margem dos tipos à esquerda (#190). Nada de "unha" e nada de ✓: o salvo é a bolinha laranja. */
 
 .escrita-barra { display: flex; align-items: center; gap: 12px; max-width: 980px; margin: 0 auto; padding: 0 32px 10px; min-height: 40px; }
 .escrita-barra .espaco { flex: 1; }
@@ -77,4 +77,135 @@
   .folha-escrita { --margem-dos-tipos: 0px; border-left: 0; border-right: 0; border-radius: 0; padding: 26px 18px 60px; min-height: 60vh; }
   .folha-escrita-titulo { font-size: 30px; }
   .folha-escrita .texto-escrita p { font-size: 16.5px; }
+}
+
+/* ================= escrever (#190) ================= */
+
+/* a folha e a lista das artes ao lado; abaixo de 1180 px, a lista desce para depois da folha */
+.escrita-barra { max-width: 1320px; }
+.escrita { max-width: 1320px; display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; align-items: start; }
+.escrita-lado { position: sticky; top: 16px; min-width: 0; display: flex; flex-direction: column; gap: 14px; animation: entrar-suave 0.4s 0.2s var(--suave) both; }
+@media (max-width: 1180px) {
+  .escrita, .escrita-barra { max-width: 980px; }
+  .escrita { grid-template-columns: minmax(0, 1fr); }
+  .escrita-lado { position: static; }
+}
+
+/* a cor de cada tipo: o rótulo da margem, o selo dos menus e o texto do trecho */
+:where(.folha-escrita, .menu-do-tipo, .menu-da-barra) [data-tipo] { --c: var(--tinta3); }
+:where(.folha-escrita, .menu-do-tipo, .menu-da-barra) :is([data-tipo='locucao'], [data-tipo='sonora'], [data-tipo='locacao']) { --c: var(--tinta2); }
+:where(.folha-escrita, .menu-do-tipo, .menu-da-barra) [data-tipo='arte'] { --c: var(--ultra); }
+:where(.folha-escrita, .menu-do-tipo, .menu-da-barra) [data-tipo='edicao'] { --c: var(--edicao); }
+:where(.folha-escrita, .menu-do-tipo, .menu-da-barra) [data-tipo='trilha'] { --c: var(--sonoplastia); }
+:where(.folha-escrita, .menu-do-tipo, .menu-da-barra) [data-tipo='locutor'] { --c: var(--locutor); }
+:where(.folha-escrita, .menu-do-tipo, .menu-da-barra) [data-tipo='producao'] { --c: var(--producao); }
+
+/* a margem dos tipos: o rótulo de cada trecho, alinhado à primeira linha dele; o palpite leva o "?" e o contorno fino */
+.folha-escrita-corpo { position: relative; }
+.margem-dos-tipos { position: absolute; left: 0; top: 0; width: calc(var(--margem-dos-tipos) - 14px); height: 0; }
+.tipo-na-margem {
+  position: absolute; right: 0; top: 0; height: 20px; padding: 0 6px; border: 0; border-radius: 6px; background: none;
+  font: 600 10.5px/20px var(--mono); letter-spacing: 0.07em; color: var(--c); white-space: nowrap; cursor: pointer; opacity: 0.62;
+  transition: transform var(--medio) var(--suave), opacity var(--rapido) var(--suave), background var(--rapido) var(--suave);
+  animation: aparecer-fundo var(--medio) var(--suave) both;
+}
+.tipo-na-margem.palpite { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 38%, transparent); }
+.tipo-na-margem i { font-style: normal; margin-left: 1px; color: var(--ultra); }
+.tipo-na-margem.no-cursor, .tipo-na-margem:hover, .tipo-na-margem[aria-expanded='true'] { opacity: 1; }
+.tipo-na-margem:hover, .tipo-na-margem[aria-expanded='true'] { background: color-mix(in srgb, var(--c) 12%, transparent); }
+.tipo-na-margem:focus-visible { opacity: 1; outline: 2px solid var(--ultra); outline-offset: 1px; }
+.tipo-na-margem:disabled { cursor: default; background: none; }
+/* o trecho vazio sem tipo não precisa de rótulo, só onde está o cursor */
+.tipo-na-margem.vazio:not(.no-cursor) { opacity: 0; }
+/* a troca do tipo reescreve o rótulo */
+.tipo-na-margem-nome { display: inline-block; animation: trocar-tipo 0.26s var(--suave) both; }
+@keyframes trocar-tipo { from { opacity: 0; transform: translateX(4px); } }
+
+/* cada tipo na sua formatação: a locução em caixa alta, a trilha e a edição em itálico, a locação como um cabeçalho que
+   abre o grupo dos trechos que vêm depois */
+.folha-escrita .texto-escrita p { position: relative; transition: color var(--medio) var(--suave); }
+.folha-escrita .texto-escrita p[data-tipo='locucao'] { text-transform: uppercase; font-weight: 500; letter-spacing: 0.02em; }
+.folha-escrita .texto-escrita p[data-tipo='sonora'] { font-size: 16.5px; }
+.folha-escrita .texto-escrita p[data-tipo='arte'] { font-weight: 500; letter-spacing: 0.01em; }
+.folha-escrita .texto-escrita p:is([data-tipo='trilha'], [data-tipo='edicao']) { font: italic 400 17px/1.7 var(--serifa); color: var(--c); }
+.folha-escrita .texto-escrita p:is([data-tipo='locutor'], [data-tipo='producao']) { font-size: 15.5px; color: var(--c); }
+.folha-escrita .texto-escrita p[data-tipo='comentario'] { font-size: 15px; color: var(--tinta3); font-style: italic; }
+.folha-escrita .texto-escrita p[data-tipo='locacao'] {
+  margin-top: 14px; padding: 12px 0 6px 24px; border-top: 1px solid var(--regua);
+  font: 600 12.5px/1.5 var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--tinta2);
+}
+.folha-escrita .texto-escrita p[data-tipo='locacao']:first-child { margin-top: 0; border-top: 0; padding-top: 6px; }
+.folha-escrita .texto-escrita p[data-tipo='locacao']::after {
+  content: ''; position: absolute; left: 2px; bottom: 9px; width: 13px; height: 13px; background: var(--tinta3);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 21s-7-6.1-7-11a7 7 0 0 1 14 0c0 4.9-7 11-7 11z M12 8a2 2 0 1 0 0 4a2 2 0 1 0 0-4'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 21s-7-6.1-7-11a7 7 0 0 1 14 0c0 4.9-7 11-7 11z M12 8a2 2 0 1 0 0 4a2 2 0 1 0 0-4'/%3E%3C/svg%3E") center / contain no-repeat; pointer-events: none;
+}
+/* o trecho vazio com o tipo escolhido diz o que vai nele */
+.folha-escrita .texto-escrita > p[data-confirmado='true']:has(> br:only-child)::before { float: left; height: 0; pointer-events: none; color: var(--tinta3); opacity: 0.7; text-transform: none; letter-spacing: 0; font-weight: 400; }
+.folha-escrita .texto-escrita > p[data-tipo='locucao'][data-confirmado='true']:has(> br:only-child)::before { content: 'O que o locutor fala'; }
+.folha-escrita .texto-escrita > p[data-tipo='arte'][data-confirmado='true']:has(> br:only-child)::before { content: 'O texto que entra na tela'; }
+.folha-escrita .texto-escrita > p[data-tipo='sonora'][data-confirmado='true']:has(> br:only-child)::before { content: 'Quem fala, de onde: a fala'; }
+.folha-escrita .texto-escrita > p[data-tipo='edicao'][data-confirmado='true']:has(> br:only-child)::before { content: 'A imagem, o corte, o material'; }
+.folha-escrita .texto-escrita > p[data-tipo='trilha'][data-confirmado='true']:has(> br:only-child)::before { content: 'A música, o efeito, o silêncio'; }
+.folha-escrita .texto-escrita > p[data-tipo='locutor'][data-confirmado='true']:has(> br:only-child)::before { content: 'Para o locutor: o jeito de ler'; }
+.folha-escrita .texto-escrita > p[data-tipo='producao'][data-confirmado='true']:has(> br:only-child)::before { content: 'O que a produção providencia'; }
+.folha-escrita .texto-escrita > p[data-tipo='locacao'][data-confirmado='true']:has(> br:only-child)::before { content: 'Onde a cena se passa'; }
+.folha-escrita .texto-escrita > p[data-tipo='comentario'][data-confirmado='true']:has(> br:only-child)::before { content: 'Uma nota no roteiro'; }
+
+/* as fichas: o timecode e o arquivo da rede, que o texto vira quando o cursor sai deles; o arquivo mostra só o nome */
+.texto-escrita .ficha-do-texto {
+  padding: 1px 6px 1px 21px; margin: 0 1px; border-radius: 6px; font: 500 0.8em/1 var(--mono); letter-spacing: 0; text-transform: none;
+  font-style: normal; cursor: pointer; background-position: 5px center; position: relative; -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  animation: surgir-ficha-escrita 0.3s var(--suave); transition: background var(--rapido) var(--suave);
+}
+.texto-escrita .ficha-do-texto::before { content: ''; position: absolute; left: 6px; top: 50%; width: 11px; height: 11px; margin-top: -5.5px; background: currentColor; }
+.texto-escrita .ficha-do-texto-timecode { background-color: color-mix(in srgb, var(--edicao) 12%, transparent); color: var(--edicao); }
+.texto-escrita .ficha-do-texto-timecode::before { -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0 M12 7v5l3 2'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0 M12 7v5l3 2'/%3E%3C/svg%3E") center / contain no-repeat; }
+.texto-escrita .ficha-do-texto-arquivo { background-color: var(--neutro); color: var(--tinta2); }
+.texto-escrita .ficha-do-texto-arquivo::before { -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z M14 3v5h5'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z M14 3v5h5'/%3E%3C/svg%3E") center / contain no-repeat; }
+.texto-escrita .ficha-do-texto:hover { background-color: color-mix(in srgb, var(--c, var(--tinta)) 16%, var(--neutro)); }
+.texto-escrita .ficha-do-texto-pasta { display: none; }
+@keyframes surgir-ficha-escrita { from { background-color: transparent; } }
+
+/* os menus da escrita: o do "/" e o do tipo (o .menu de sempre, com a cabeça e o selo na cor do tipo) */
+.menu-da-barra, .menu-do-tipo { min-width: 300px; max-height: 380px; overflow-y: auto; z-index: 45; }
+.menu-do-tipo { min-width: 240px; max-height: none; }
+.menu-cab-escrita { display: flex; justify-content: space-between; gap: 8px; padding: 4px 10px 6px; font: 600 10.5px var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: var(--tinta3); }
+.menu-cab-escrita code { font: 600 12px var(--mono); letter-spacing: 0; text-transform: none; color: var(--ultra); }
+.menu-da-barra .selo, .menu-do-tipo .selo { color: var(--c, var(--tinta2)); background: color-mix(in srgb, var(--c, var(--tinta2)) 12%, transparent); }
+.menu-da-barra .menu-item.ativo .selo, .menu-do-tipo .menu-item.ativo .selo { color: var(--c, var(--tinta)); background: color-mix(in srgb, var(--c, var(--tinta)) 20%, transparent); }
+.menu-da-barra mark { background: none; color: var(--ultra); font-weight: 700; }
+.menu-da-barra code.menu-atalho { font: 500 11.5px var(--mono); }
+.menu-do-tipo kbd.menu-atalho { font: 600 10.5px var(--mono); }
+
+/* o balão da ficha: o nome, o caminho inteiro e o copiar */
+.balao-da-ficha { width: 340px; max-width: calc(100vw - 24px); gap: 6px; }
+.balao-da-ficha h3 { margin: 0; font: 600 15px/1.3 var(--sans); overflow-wrap: anywhere; }
+.balao-da-ficha[data-ficha='timecode'] h3 { font-family: var(--mono); }
+.balao-da-ficha-caminho { display: block; padding: 8px 10px; border-radius: 8px; background: var(--neutro); font: 500 12.5px/1.5 var(--mono); overflow-wrap: anywhere; white-space: pre-wrap; user-select: all; }
+.balao-da-ficha .suave { font-size: 13px; }
+.balao-da-ficha .popover-acoes { margin-top: 4px; }
+.balao-da-ficha .botao { display: inline-flex; align-items: center; gap: 7px; }
+
+/* a lista das artes ao lado (a mesma lista da revisão) */
+.artes-da-escrita .cab-artes { margin-bottom: 6px; }
+.artes-da-escrita .artes .vaga-dentro { min-width: 0; }
+.arte-da-escrita { display: flex; border-radius: 10px; transition: background var(--rapido) var(--suave); }
+.arte-da-escrita:hover, .arte-da-escrita.ativa { background: var(--neutro); }
+.arte-da-escrita .arte-linha:hover { background: none; }
+.artes-da-escrita-vazio { margin: 4px 2px 6px; line-height: 1.5; }
+.artes-da-escrita-nota { margin: 10px 2px 0; padding-top: 10px; border-top: 1px dashed var(--regua); line-height: 1.5; color: var(--tinta3); }
+
+/* o rodapé: os atalhos à vista, à direita dos números */
+.rodape-da-escrita .atalhos-da-escrita { display: inline-flex; gap: 14px; align-items: center; }
+.rodape-da-escrita .atalhos-da-escrita > span { padding: 0; border: 0; gap: 6px; align-items: center; }
+.rodape-da-escrita kbd { font: 600 10.5px var(--mono); padding: 1px 5px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .escrita-lado, .tipo-na-margem, .tipo-na-margem-nome, .texto-escrita .ficha-do-texto { animation: none; }
+  .tipo-na-margem, .folha-escrita .texto-escrita p { transition: none; }
+}
+@media (max-width: 600px) {
+  .margem-dos-tipos { display: none; }
+  .escrita-lado { padding: 0 12px; }
+  .menu-da-barra, .menu-do-tipo { min-width: 0; width: min(320px, calc(100vw - 24px)); }
 }

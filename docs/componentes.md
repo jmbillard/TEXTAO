@@ -94,6 +94,8 @@ O e2e confere com `lugarDaLupa`, de `tests/e2e/coerencia.cjs`. Os Cadastros têm
 | `MenuLigar` | `Cadastros.tsx` | A busca para ligar um nome de uma lista, com o "+ Nova" preso embaixo, pelas setas e pelo Enter. | Ligar uma atração, uma campanha ou uma Produção. |
 | `EscolhaDeNome` | `pecas.tsx` | Escolher um nome da lista do Teable, com busca e o palpite à mão. | O redator e o editor. |
 | `ListaDosTurnos` | `TurnosDaConfiguracao.tsx` | A lista de turnos da Configuração (nome, horário, ordem, tirar, "+ Novo turno"). `qual` escolhe a da edição ou a da arte. | As seções de turnos. |
+| `PopoverMarca` | `TelaEditor.tsx` | O balão de uma arte (ou etiqueta) já marcada no texto: o tipo da arte (opcional, vários), a observação, dividir e remover. | O clique numa arte do texto, na revisão e na folha de escrita (#190). |
+| `Atalhos` | `Atalhos.tsx` | O "?" no canto e o cartão dos atalhos da tela (`tela`), que o "?" abre e fecha. Na folha de escrita, o "?" digitado no texto é do texto. | Toda tela com atalhos do teclado. |
 | `Compartilhar` | `Compartilhar.tsx` | O painel de quem tem acesso a um roteiro: o modo (fechado ou de todos) e as pessoas, sem acesso, lendo ou escrevendo. `escrito` troca só os textos para os do Roteiro escrito no PROMeiro. | O botão de visibilidade da revisão e da folha de escrita. |
 
 ## Topo e cenas

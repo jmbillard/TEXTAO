@@ -60,6 +60,13 @@ const D = {
   // a seção Pessoas (#77): a pessoa da novidade e a chave-mestra
   pessoa: 'M5 20a7 7 0 0 1 14 0 M12 4a4 4 0 1 0 0 8a4 4 0 1 0 0-8',
   chave: 'M14.5 4a5.5 5.5 0 1 0 0 11a5.5 5.5 0 1 0 0-11 M10.6 13.4L4 20 M7 17l2 2 M5 19l1.5 1.5',
+  // os tipos do trecho na escrita (#190): a fala da locução, as aspas da sonora, o pino da locação, o relógio do timecode
+  // e as linhas do texto sem tipo
+  fala: 'M4 10v4 M8 7v10 M12 4v16 M16 7v10 M20 10v4',
+  aspas: 'M6 8h4v4c0 2.6-1.6 4.6-4 5.6 M14 8h4v4c0 2.6-1.6 4.6-4 5.6',
+  pino: 'M12 21s-7-6.1-7-11a7 7 0 0 1 14 0c0 4.9-7 11-7 11z M12 8a2 2 0 1 0 0 4a2 2 0 1 0 0-4',
+  relogio: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0 M12 7v5l3 2',
+  texto: 'M5 6h14 M5 12h14 M5 18h9',
   mao: 'M9 11V5.5a1.5 1.5 0 0 1 3 0V10 M12 9.5V8a1.5 1.5 0 0 1 3 0v3 M15 10a1.5 1.5 0 0 1 3 0v4.5a6.5 6.5 0 0 1-6.5 6.5h-.6a6 6 0 0 1-4.7-2.3L3.6 15a1.5 1.5 0 0 1 2.3-1.9L9 15.5',
 } as const;
 

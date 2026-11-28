@@ -34,7 +34,7 @@ const DAVI = 'davi.rocha@exemplo.com';
 const CAPTURAS = process.env.CAPTURAS || '';
 const VOCAB = { programas: [], redatores: [], editores: [], pauta: [] };
 const ID = 'comentarios-e2e-1';
-const LARGA = { width: 1400, height: 860 };
+const LARGA = { width: 1500, height: 880 };
 
 const ENV_CADASTROS = { TEABLE_URL: 'http://teable-falso', TEABLE_TOKEN: 'falso', TEABLE_REDATORES: 'tblRed', TEABLE_KEY_REDATORES: 'tblKeyRed', TEABLE_EDITORES: 'tblEdi', TEABLE_KEY_EDITORES: 'tblKeyEdi' };
 const TABELAS = { tblRed: [{ id: 'recR1', fields: { redator: 'Marina Teles', email: MARINA } }], tblKeyRed: [], tblEdi: [], tblKeyEdi: [] };
@@ -249,7 +249,7 @@ async function principal() {
     console.log('ok: resolver e desfazer, nos dois navegadores');
 
     // na tela estreita, o balão abre por cima da folha ao tocar no trecho
-    await marina.p.setViewportSize({ width: 1024, height: 800 });
+    await marina.p.setViewportSize({ width: 1280, height: 800 });
     await marina.p.keyboard.press('Escape');
     await marina.p.waitForSelector('.balao-comentario', { state: 'detached' });
     await marina.p.click('.texto-escrita .comentario-trecho');

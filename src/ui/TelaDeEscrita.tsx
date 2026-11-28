@@ -6,14 +6,16 @@ import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import { armazenamento, type Leitura } from '../dados/armazenamento';
 import { abrirSala, corDe } from '../dados/colaboracao';
 import { extensoesDoRoteiro, prepararColagem, Teclado } from '../editor/extensoes';
+import { Escrita, type PonteDaEscrita } from '../editor/escrita';
 import { metaVazia, type Meta, type Pessoa, type Roteiro } from '../modelo/tipos';
 import { casoDaLeitura, LinkQuebrado } from './LinkQuebrado';
 import { Compartilhar, type Convite } from './Compartilhar';
 import { ComentariosDaFolha } from './ComentariosDaFolha';
 import { ComentariosNoTexto } from '../editor/comentarios';
+import { ArtesDaEscrita, EscritaNaFolha, RodapeDaEscrita } from './EscritaNaFolha';
 import { BolinhaDeEstado } from './pecas';
 import { Icone } from './icones';
-import { quandoComecou } from './util';
+import { ATALHO_DE_COMENTAR, quandoComecou } from './util';
 import { Presentes } from './Filmes';
 import { useSalaDaEscrita } from './salaDaEscrita';
 import './escrita.css';
@@ -27,8 +29,9 @@ import './escrita.css';
    (e recebe ao vivo), com a faixa que diz isso; o servidor descarta o que ele mandar pela sala. A visibilidade é o
    painel `Compartilhar` da revisão, com os textos do escrito, e ela sim vai pelo PUT (só ela: o texto é o da sala).
 
-   Os ganchos dos próximos tickets ficam marcados: a margem dos tipos e o "/" (#190), a sala e a presença no topo
-   (#191), os comentários (#192), Texto/Colunas e o modo limpo (#193) e o Enviar (#194). */
+   O escrever (#190) mora em `editor/escrita.ts` (o teclado, o palpite, as fichas) e em `EscritaNaFolha.tsx` (a margem
+   dos tipos, o menu do "/", os balões, a lista das artes e o rodapé). Os ganchos dos próximos tickets ficam marcados: a
+   sala e a presença no topo (#191), os comentários (#192), Texto/Colunas e o modo limpo (#193) e o Enviar (#194). */
 
 /** Quanto a folha espera depois da última tecla para salvar. */
 const SALVAR_MS = 600;
@@ -94,13 +97,17 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
   // os comentários (#192): o pedido do botão Comentar e quantos estão abertos
   const [pedidoDeComentario, setPedidoDeComentario] = useState(0);
   const [abertos, setAbertos] = useState(0);
+  // a escrita (#190): a ponte entre o teclado do editor e a tela (o menu do "/", os balões), e a arte com o balão aberto
+  const ponte = useRef<PonteDaEscrita>({});
+  const [arteAberta, setArteAberta] = useState<string | null>(null);
   // a sala ao vivo (#191): só existe com o servidor; o exemplo do tour não chega aqui (ele não é escrito no PROMeiro)
   const [sala] = useState(() => (armazenamento.tipo === 'servidor' ? abrirSala(inicial.id) : null));
 
   const editor = useEditor({
     extensions: [
       ...extensoesDoRoteiro(),
-      // Ctrl+U marca a arte, como na revisão; o resto do teclado da escrita (o "/", Tab nos tipos) chega no #190
+      // o teclado da escrita (#190) vem antes do da revisão: o "/", o Tab nos tipos, o Ctrl+U no trecho, as fichas
+      Escrita.configure({ ponte: () => ponte.current, programa: () => estado.current.meta.programa }),
       Teclado.configure({ programa: () => estado.current.meta.programa }),
       // o grifo dos trechos comentados (#192): decoração, o documento não muda
       ComentariosNoTexto,
@@ -245,7 +252,7 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
         <button
           type="button"
           className="botao escrita-comentar"
-          title="Comentar o trecho selecionado (Ctrl+Alt+M)"
+          title={`Comentar o trecho selecionado (${ATALHO_DE_COMENTAR})`}
           aria-keyshortcuts="Control+Alt+M"
           // o clique não tira a seleção do texto
           onMouseDown={(e) => e.preventDefault()}
@@ -317,14 +324,20 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
             </p>
             {/* #193: Texto/Colunas e o modo limpo entram aqui, embaixo do título */}
           </header>
-          {/* a margem fica à esquerda do texto: é nela que o #190 põe o tipo de cada trecho (com o "?" do palpite); os
-              balões de comentário (#192) ficam à direita */}
+          {/* a margem fica à esquerda do texto, com o tipo de cada trecho (e o "?" do palpite, #190); os balões de
+              comentário (#192) ficam à direita */}
           <div className="folha-escrita-corpo" data-margem="tipos">
             <EditorContent editor={editor} />
             <ComentariosDaFolha id={inicial.id} editor={editor} eu={pessoa} avisar={avisar} pedido={pedidoDeComentario} contar={setAbertos} />
+            {editor && <EscritaNaFolha editor={editor} escreve={escreve} ponte={ponte} arteAberta={arteAberta} abrirArte={setArteAberta} />}
           </div>
         </article>
+        {/* ao lado da folha: a lista das artes (#190) */}
+        <aside className="escrita-lado" aria-label="Ao lado do roteiro">
+          {editor && <ArtesDaEscrita editor={editor} escreve={escreve} arteAberta={arteAberta} abrirArte={setArteAberta} />}
+        </aside>
       </main>
+      {editor && <RodapeDaEscrita editor={editor} />}
     </div>
   );
 }
