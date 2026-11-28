@@ -252,8 +252,8 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
           onClick={() => setPedidoDeComentario((n) => n + 1)}
         >
           <Icone nome="comentario" tam={14} traco={2} />
-          <span className="rotulo">Comentar</span>
-          {abertos > 0 && <span className="contagem" aria-label={`${abertos} abertos`}>{abertos}</span>}
+          <span className="escrita-comentar-nome">Comentar</span>
+          {abertos > 0 && <span className="escrita-comentar-conta" aria-label={`${abertos} abertos`}>{abertos}</span>}
         </button>
         {/* quem mais está no roteiro agora (#191): as bolinhas da mesma peça da prévia, com as iniciais na cor de cada um */}
         <span className="escrita-presentes" aria-live="polite">

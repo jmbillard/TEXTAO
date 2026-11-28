@@ -83,7 +83,10 @@
 
 /* o botão Comentar da barra */
 .escrita-comentar { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 9px; font-size: 13px; }
-.escrita-comentar .contagem { font-variant-numeric: tabular-nums; color: var(--tinta3); }
+.escrita-comentar-conta {
+  display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--neutro);
+  font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--tinta2);
+}
 
 @media (prefers-reduced-motion: reduce) {
   .balao-comentario, .mencao-lista { animation: none; transition: none; }
@@ -98,7 +101,7 @@
     border-radius: 16px 16px 0 0; padding: 18px 16px calc(16px + env(safe-area-inset-bottom)); box-shadow: var(--sombra-menu); transform: none;
     animation: balao-sobe 0.3s var(--suave) both;
   }
-  .escrita-comentar .rotulo { display: none; }
+  .escrita-comentar-nome { display: none; }
   .comentarios-sem-trecho { max-width: none; }
 }
 @keyframes balao-sobe { from { transform: translateY(100%); } }
