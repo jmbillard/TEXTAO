@@ -3,7 +3,8 @@ import { iniciais } from '../dados/colaboracao';
 import { colunasDoDia, diasDaSemana, ehDaPessoa, noArAgora, segundaDaSemana, type ColunaDoDia, type LinhaDaPauta } from '../modelo/pauta';
 import { BalaoDeInfo } from './BalaoDeInfo';
 import { ContaDoDia, ListaDaPauta } from './MesaDaPauta';
-import { Avisos, DIAS_DA_SEMANA, partes, relativoA, turnoEscrito, type AbrirClaquete } from './pecasDaPauta';
+import { Avisos, DIAS_DA_SEMANA, IlhaDividida, partes, relativoA, turnoEscrito, type AbrirClaquete } from './pecasDaPauta';
+import { naEscala, type EscalaNaPauta } from '../modelo/escalaNaPauta';
 import { useDiaQueConta } from './trocaDaPauta';
 import { RelativoAMao, VoceAMao } from './pecas';
 
@@ -46,12 +47,14 @@ export function FitaDosDias({ dia, hoje, ir }: { dia: string; hoje: string; ir: 
   );
 }
 
-function Coluna({ c, dia, agora, voce, abrir, i }: { c: ColunaDoDia; dia: string; agora: number; voce: string | null | undefined; abrir: AbrirClaquete; i: number }) {
+function Coluna({ c, dia, agora, voce, escala, abrir, i }: { c: ColunaDoDia; dia: string; agora: number; voce: string | null | undefined; escala?: readonly EscalaNaPauta[]; abrir: AbrirClaquete; i: number }) {
   const sobra = !c.editor;
   // o que sobrou não tem turno: "no ar agora" é só de quem edita
   const noAr = !sobra && noArAgora(dia, c.turno, agora);
   const eu = ehDaPessoa(c.editor, voce);
   const nome = c.editor || 'Sobrou · sem editor';
+  // a ilha do editor no dia (da planilha), embaixo do turno, como no mock-up
+  const naIlha = sobra ? null : naEscala(escala, dia, c.editor);
   return (
     <section className={`pauta-coluna desliza${eu ? ' eu' : ''}${sobra ? ' sobra sem-editor' : ''}${noAr ? ' no-ar' : ''}`} data-editor={c.editor} aria-label={c.editor || 'sem editor'} style={{ '--i': i } as CSSProperties}>
       <header className="pauta-coluna-topo">
@@ -66,9 +69,12 @@ function Coluna({ c, dia, agora, voce, abrir, i }: { c: ColunaDoDia; dia: string
           <span className="pauta-turno">{sobra ? 'quem puder' : turnoEscrito(c.turno) || 'sem horário'}</span>
           {sobra ? <span className="pauta-coluna-conta">{c.itens.length}</span> : <ContaDoDia itens={c.itens} rotulo={false} />}
         </span>
-        {(noAr || c.avisos.length > 0 || (!sobra && c.infos.length > 0)) && (
+        {(noAr || !!naIlha?.ilha || c.avisos.length > 0 || (!sobra && c.infos.length > 0)) && (
           <span className="pauta-coluna-linha">
-            {noAr ? <span className="pauta-no-ar">no ar agora</span> : <span />}
+            <span className="pauta-coluna-onde">
+              {naIlha?.ilha && <span className="pauta-coluna-ilha">{naIlha.ilha}</span>}
+              {noAr && <span className="pauta-no-ar">no ar agora</span>}
+            </span>
             <span className="pauta-coluna-recados">
               {c.avisos.length > 0 && <Avisos avisos={c.avisos} rotulo={c.editor || 'sem editor'} />}
               {/* a info que não é de claquete fica na posição (#172) */}
@@ -76,6 +82,7 @@ function Coluna({ c, dia, agora, voce, abrir, i }: { c: ColunaDoDia; dia: string
             </span>
           </span>
         )}
+        <IlhaDividida escala={naIlha} />
       </header>
       <div className="pauta-coluna-corpo">
         <ListaDaPauta itens={c.itens} abrir={abrir} vazio={sobra ? 'nada sobrando' : 'fila vazia'} />
@@ -88,7 +95,7 @@ function Coluna({ c, dia, agora, voce, abrir, i }: { c: ColunaDoDia; dia: string
  * As colunas do Dia: você, o que sobrou e a equipe.
  * @param linhas as linhas da semana (ficam as do dia)
  */
-export function ColunasDoDia({ linhas, dia, voce, abrir, comSobra = true }: { linhas: readonly LinhaDaPauta[]; dia: string; voce: string | null | undefined; abrir: AbrirClaquete; comSobra?: boolean }) {
+export function ColunasDoDia({ linhas, dia, voce, escala, abrir, comSobra = true }: { linhas: readonly LinhaDaPauta[]; dia: string; voce: string | null | undefined; escala?: readonly EscalaNaPauta[]; abrir: AbrirClaquete; comSobra?: boolean }) {
   const [agora, setAgora] = useState(() => Date.now());
   // o "agora" anda: o "no ar agora" a cada minuto
   useEffect(() => {
@@ -119,7 +126,7 @@ export function ColunasDoDia({ linhas, dia, voce, abrir, comSobra = true }: { li
     <div className="pauta-faixa" ref={faixa}>
       <div className="pauta-colunas">
         {colunas.map((c, i) => (
-          <Coluna key={c.editor || '(sem editor)'} c={c} dia={dia} agora={agora} voce={voce} abrir={abrir} i={i} />
+          <Coluna key={c.editor || '(sem editor)'} c={c} dia={dia} agora={agora} voce={voce} escala={escala} abrir={abrir} i={i} />
         ))}
       </div>
     </div>

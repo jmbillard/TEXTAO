@@ -1897,6 +1897,8 @@ a.ficha-marca.trello { text-decoration: none; }
 .bolinha-estado.aprovacao { background: var(--producao); }
 .bolinha-estado.entregue, .bolinha-estado.ok { background: var(--ok); }
 .bolinha-estado.entrada { background: var(--tinta3); }
+/* "falta" (fora das etapas): o que pede atenção sem ser erro, como a ilha dividida da Pauta */
+.bolinha-estado.falta { background: var(--falta); }
 .bolinha-estado.tam-ficha { width: 8px; height: 8px; }
 .bolinha-estado.tam-ficha.card, .bolinha-estado.tam-ficha.sem-card { background: transparent; box-shadow: inset 0 0 0 1.5px var(--tinta3); }
 .bolinha-estado { transition: background-color 0.3s var(--suave); }

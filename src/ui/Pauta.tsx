@@ -4,6 +4,7 @@ import { apelidoDaClaquete, useApelidos } from '../dados/apelidos';
 import { iniciais } from '../dados/colaboracao';
 import { buscarNaPauta, diaDaPautaAgora, diaEmSaoPaulo, diaOuHoje, diasDaSemana, diaVizinho, ehDaPessoa, gradeDaSemana, segundaDaSemana, semanaVizinha, veOQueSobrou, type CelulaDaSemana, type LeituraDaPauta, type LinhaDaPauta, type SemanaDaPauta } from '../modelo/pauta';
 import { BalaoDeInfo } from './BalaoDeInfo';
+import { ilhaDaSemana } from '../modelo/escalaNaPauta';
 import { BuscaNaLupa } from './BuscaNaLupa';
 import { useCodigoDasVersoes } from './CodigoDasVersoes';
 import { Icone } from './icones';
@@ -219,7 +220,8 @@ function GradeDaSemana({ dados, hoje, voce, irPara, abrir, comSobra }: { dados: 
                       <span className="pauta-nome">{f.editor || 'sem editor'}</span>
                       {eu && <VoceAMao />}
                     </span>
-                    <span className="pauta-editor-meta">{f.editor ? `${claquetes} ${claquetes === 1 ? 'claquete' : 'claquetes'}` : 'sobrou'}</span>
+                    {/* a ilha da semana (da planilha), como no mock-up; sem ela, quantas claquetes */}
+                    <span className="pauta-editor-meta">{!f.editor ? 'sobrou' : ilhaDaSemana(dados.escala, f.editor) || `${claquetes} ${claquetes === 1 ? 'claquete' : 'claquetes'}`}</span>
                   </div>
                 </th>
                 {f.celulas.map((c) => (
@@ -314,9 +316,9 @@ function CorpoDaPauta({ visao, alvo, semanas, hojeDaGrade, hoje, irPara, abrir, 
       ) : (
         <>
           <RecadoDoDia linhas={dados.linhas} dia={dia} hoje={hoje} />
-          <MesaDaPauta linhas={dados.linhas} dia={dia} hoje={hoje} voce={dados.voce.editor} fora={dados.fora} abrir={abrir} comSobra={comSobra} />
+          <MesaDaPauta linhas={dados.linhas} dia={dia} hoje={hoje} voce={dados.voce.editor} fora={dados.fora} escala={dados.escala} abrir={abrir} comSobra={comSobra} />
           {visao === 'dia' ? (
-            <ColunasDoDia linhas={dados.linhas} dia={mostrado} voce={dados.voce.editor} abrir={abrir} comSobra={comSobra} />
+            <ColunasDoDia linhas={dados.linhas} dia={mostrado} voce={dados.voce.editor} escala={dados.escala} abrir={abrir} comSobra={comSobra} />
           ) : !dados.linhas.length ? (
             <p className="pauta-vazia desliza">Nada na pauta desta semana.</p>
           ) : (
@@ -389,6 +391,7 @@ export function Pauta({ semana, dia, irPara, voltar, topo }: Props) {
   ultimaLida.current = lidaNaTela;
   // a busca e a ficha olham a pauta lida: a semana à vista e as vizinhas
   const lidas = useMemo(() => [-1, 0, 1].flatMap((n) => semanas[semanaVizinha(segunda, n)]?.linhas ?? []), [semanas, segunda]);
+  const escalas = useMemo(() => [-1, 0, 1].flatMap((n) => semanas[semanaVizinha(segunda, n)]?.escala ?? []), [semanas, segunda]);
   const ehHoje = visao === 'dia' ? qual === hoje : segunda === desta;
   const sentido = useSentidoDaTroca(qual);
   return (
@@ -440,7 +443,7 @@ export function Pauta({ semana, dia, irPara, voltar, topo }: Props) {
           )}
         </ContagemDaSemana>
       </main>
-      {aberta && <ClaqueteAberta aberta={aberta} linhas={lidas.length ? lidas : [aberta.linha]} hoje={hoje} voce={atual?.voce.editor} fechar={fecharFicha} />}
+      {aberta && <ClaqueteAberta aberta={aberta} linhas={lidas.length ? lidas : [aberta.linha]} hoje={hoje} voce={atual?.voce.editor} escala={escalas} fechar={fecharFicha} />}
     </div>
   );
 }

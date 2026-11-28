@@ -55,7 +55,7 @@ O e2e confere com `lugarDaLupa`, de `tests/e2e/coerencia.cjs`. Os Cadastros têm
 
 | Peça | Onde mora | O que é | Quando usar |
 |---|---|---|---|
-| `BolinhaDeEstado` | `pecas.tsx` | O pontinho da etapa: entrada neutra, produzindo `--ultra`, aprovação, entregue `--ok`, arquivada. O estado `ok` (pronto, confere, pode) também é ela; `escrevendo` é o roteiro sendo escrito, e `salvando`/`salvou` são a marca de salvo da folha de escrita (a laranja, nunca um ✓). Tamanhos: `pequena` (6 px) e `ficha` (8 px, a classe `tam-ficha`). | Todo estado. É ela que diz "está tudo certo", nunca um ✓ verde. |
+| `BolinhaDeEstado` | `pecas.tsx` | O pontinho da etapa: entrada neutra, produzindo `--ultra`, aprovação, entregue `--ok`, arquivada. O estado `ok` (pronto, confere, pode) também é ela; `escrevendo` é o roteiro sendo escrito, e `salvando`/`salvou` são a marca de salvo da folha de escrita (a laranja, nunca um ✓); `falta` (`--falta`) pede atenção sem ser erro (a ilha dividida da Pauta). Tamanhos: `pequena` (6 px) e `ficha` (8 px, a classe `tam-ficha`). | Todo estado. É ela que diz "está tudo certo", nunca um ✓ verde. |
 | `BolinhaDeAviso` | `pecas.tsx` | O pontinho laranja do novo para você, que surge com um pulo e uma onda (o mesmo do aviso dos Filmes no topo, `caminho-aviso`). Some quando a pessoa vê. | O comentário que cita a pessoa ou que chegou no roteiro dela (#192): na lista de "Roteiros" e no balão. No topo, o caminho usa o `caminho-aviso`. |
 | `EtiquetaDaCampanha` | `EtiquetaDaCampanha.tsx` | A etiqueta da campanha, no tom dela: a primeira e "+N". Abre a página da campanha. | Onde um card mostra a campanha: agenda, Pauta, Produções, card aberto. |
 | `Presentes` | `Filmes.tsx` | Quem mais está aqui agora: as bolinhas com as iniciais na cor de cada um (`corDe`), até 5 e "+N"; com `texto`, "Ana também está aqui" / "mais 2 aqui" (some no celular). | A presença de quem está junto: a prévia e a folha de escrita (#191). |
@@ -67,6 +67,7 @@ O e2e confere com `lugarDaLupa`, de `tests/e2e/coerencia.cjs`. Os Cadastros têm
 | `FolhaComDiferencas` | `Comparar.tsx` | A folha com o texto e o que entrou e saiu marcado, com a anotação à mão. | A comparação da versão nova e o envio aberto no histórico da folha de escrita (#194). |
 | `Riscado` | `Comparar.tsx` | O risco à mão que atravessa cada linha do texto. | O que saiu do roteiro e a arte que já existe. |
 | `BalaoDeInfo` | `BalaoDeInfo.tsx` | O balão de fala que abre o texto ali mesmo. | A observação de uma claquete ou de uma posição. |
+| `IlhaDividida` | `pecasDaPauta.tsx` | A bolinha `falta` e "AVID 30 também com Fulano, das 7h às 16h", no fundo levemente tingido: dois editores na mesma sala, no mesmo turno (a regra do Montar, `ilhasOcupadas`). | A Pauta: a Minha pauta, a coluna do Dia e a ficha da claquete. |
 | `FogoComTroca` | `fogo.tsx` | O fogo da complexidade, com a troca cruzada de nível. | Onde a complexidade da arte muda. |
 
 ## Tempo: agenda, período e contadores

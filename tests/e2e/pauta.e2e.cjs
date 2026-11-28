@@ -232,7 +232,8 @@ async function noComputador(navegador, url, tema) {
 
   // um editor por linha, na ordem do turno de costume
   assert.deepEqual(await textos(p.locator('.pauta-grade .pauta-nome')), ['Ana Ribeiro', 'Bruno Teixeira', 'Carla Duarte']);
-  assert.equal((await fileira(p, 'Carla Duarte').locator('.pauta-editor-meta').textContent()).trim(), '7 claquetes');
+  // a ilha da semana, da planilha, no lugar de "N claquetes" (o mock-up); sem ilha, a conta continua
+  assert.equal((await fileira(p, 'Carla Duarte').locator('.pauta-editor-meta').textContent()).trim(), 'VDI 5');
   // sem "sem editor · sobrou": a Lia não é da coordenação nem editora (#172; oSobrouPorPerfil)
   assert.equal(await p.locator('.pauta-grade tr.sem-editor').count(), 0);
   // a Lia não é editora: nenhuma linha "você", sem "Minha pauta"
@@ -289,9 +290,10 @@ async function noComputador(navegador, url, tema) {
   assert.equal(await p.locator('.pauta-sobrou').count(), 0, 'a Lia não vê o que sobrou');
   assert.equal(await p.locator('.pauta-lateral.so-fora').count(), 1);
   const fora = p.locator('.pauta-fora');
-  assert.match(await fora.locator('.rotulo').textContent(), /Fora no dia\s*1/);
-  assert.deepEqual(await textos(fora.locator('.pauta-fora-nome')), ['Elis Furtado']);
-  assert.deepEqual(await textos(fora.locator('.pauta-etiqueta')), ['fora']);
+  // a Elis pelo PROMeiro e o Igor pela planilha (a folga da aba de hoje)
+  assert.match(await fora.locator('.rotulo').textContent(), /Fora no dia\s*2/);
+  assert.deepEqual((await textos(fora.locator('.pauta-fora-nome'))).sort(), ['Elis Furtado', 'Igor Matos']);
+  assert.deepEqual(await textos(fora.locator('.pauta-etiqueta')), ['fora', 'fora']);
   await capturar(p, `01-semana-${nome}`);
 
   // a claquete com a produção da arte (#96): a etapa, as artes, o designer, a praça e o marca-texto da prioridade ALTA
@@ -326,7 +328,7 @@ async function noComputador(navegador, url, tema) {
   const largura = await painel(p).evaluate((e) => e.getBoundingClientRect().width);
   await p.waitForTimeout(400);
   assert.ok(Math.abs((await painel(p).evaluate((e) => e.getBoundingClientRect().width)) - 720) <= 1, `o painel tem 720 px (${largura})`);
-  assert.match(await ficha.locator('.pauta-ficha-onde').textContent(), /Na pauta de Bruno Teixeira · 14:00–22:53/);
+  assert.match(await ficha.locator('.pauta-ficha-onde').textContent(), /Na pauta de Bruno Teixeira · AVID 30 · 14:00–22:53/);
   const tabelas = ficha.locator('.pauta-ficha-tabela');
   // a produção de cada praça e, embaixo, as linhas da atração (versões diferentes) na pauta
   assert.deepEqual(await tabelas.nth(0).locator('tbody tr').evaluateAll((trs) => trs.map((t) => t.dataset.praca)), ['G5', 'SP']);
@@ -699,6 +701,9 @@ async function oDia(navegador, url, tema, teable, api) {
   assert.match(await minha.locator('.rotulo').textContent(), new RegExp(`Minha pauta · hoje, ${Number(hoje.slice(8))} de`));
   assert.equal((await minha.locator('h2').textContent()).trim(), 'Carla Duarte');
   assert.match(await minha.locator('.pauta-minha-meta').textContent(), /22:00–06:00/);
+  // a ilha e o turno do dia, da planilha (o mock-up: "22:00–06:00 · VDI 5 · madrugada")
+  assert.deepEqual(await textos(minha.locator('.pauta-meta-parte')), ['VDI 5', 'madrugada']);
+  assert.equal(await minha.locator('.pauta-ilha-dividida').count(), 0);
   assert.equal((await minha.locator('.pauta-aviso-botao').textContent()).replace(/\s+/g, ' ').trim(), '⚑ 1');
   assert.deepEqual(await textos(minha.locator('.pauta-texto')), [`Festa da Vila(Prologo)${diaMes(mais(hoje, 2))}`]);
   // a contagem do dia: as claquetes com a arte entregue, uma bolinha por claquete
@@ -732,6 +737,13 @@ async function oDia(navegador, url, tema, teable, api) {
   const larguraDaMesa = await p.locator('.pauta-minha').evaluate((e) => e.getBoundingClientRect().width);
   assert.ok(larguraDaMesa > 600, `o "Minha pauta" ocupa a mesa (${larguraDaMesa})`);
   assert.equal((await coluna(p, 'Bruno Teixeira').locator('.pauta-no-ar').textContent()).trim(), 'no ar agora');
+  // a ilha de cada editor (da planilha) e o aviso de dois editores na mesma sala, no mesmo turno (a regra do Montar)
+  assert.equal((await coluna(p, 'Bruno Teixeira').locator('.pauta-coluna-ilha').textContent()).trim(), 'AVID 30');
+  assert.equal((await coluna(p, 'Ana Ribeiro').locator('.pauta-coluna-ilha').textContent()).trim(), 'AVID 22');
+  assert.equal((await coluna(p, 'Ana Ribeiro').locator('.pauta-ilha-dividida').textContent()).replace(/\s+/g, ' ').trim(), 'AVID 22 também com Davi Rocha, das 6h às 15h');
+  assert.equal(await coluna(p, 'Bruno Teixeira').locator('.pauta-ilha-dividida').count(), 0);
+  assert.equal(await coluna(p, 'Ana Ribeiro').locator('.pauta-ilha-dividida .bolinha-estado.falta').count(), 1);
+  await capturar(p, `08-dia-ilha-${nome}`, false);
   // a contagem de cada coluna
   assert.equal((await coluna(p, 'Ana Ribeiro').locator('.pauta-conta-num').textContent()).replace(/\s+/g, ' ').trim(), '0 de 2');
   // o aviso da Carla no ⚑ da coluna
@@ -755,6 +767,8 @@ async function oDia(navegador, url, tema, teable, api) {
   const festa = cardDe(coluna(p, 'Carla Duarte'), 'Festa da Vila');
   await festa.locator('.pauta-claquete-botao').click();
   await p.locator('.pauta-ficha-onde', { hasText: 'Na sua pauta' }).waitFor();
+  // na ficha, a ilha do dia (da planilha): "Na sua pauta · VDI 5 · 22:00–06:00"
+  assert.match((await p.locator('.pauta-ficha-onde').textContent()).replace(/\s+/g, ' '), /Na sua pauta · VDI 5 · 22:00–06:00/);
   assert.match(await p.locator('.pauta-ficha-avisos').textContent(), /para a posição.*Redator vem acompanhar a edição/);
   await p.keyboard.press('Escape');
   await fechou(p);
@@ -1347,6 +1361,47 @@ async function porAsProducoes(db) {
   }
 }
 
+/* A escala do dia pela planilha (o mock-up: "06:00–15:00 · AVID 22 · manhã"): a foto crua da aba de hoje, como o n8n
+   manda (#133), com as ilhas cadastradas. A Ana e o Davi Rocha (que não está na pauta do Teable) dividem a sala 22 de
+   manhã (AVID 22 e ILHA 22), o Bruno fica na AVID 30 à tarde, a Carla na VDI 5 de madrugada e o Igor Matos de folga. */
+const TOKEN_DA_FOTO = 'token-da-foto-e2e';
+const [dd, mm, aaaa] = [hoje.slice(8), hoje.slice(5, 7), hoje.slice(0, 4)];
+const GRADE_DE_HOJE = [
+  ['', 'HOJE', `${dd}/${mm}/${aaaa}`],
+  [],
+  ['', '                                 MANHÃ'],
+  [],
+  ['', 'AVID 22', '', 'ILHA 22'],
+  ['', 'EDITOR: ', 'Ana Ribeiro', 'EDITOR: ', 'Davi Rocha'],
+  ['', 'HORÁRIO: ', '6 AS 15', 'HORÁRIO: ', '6 AS 15'],
+  [],
+  ['', '                                 TARDE'],
+  [],
+  ['', 'AVID 30', '', 'AVID 31'],
+  ['', 'EDITOR: ', 'Bruno Teixeira', 'EDITOR: ', 'Igor Matos'],
+  ['', 'HORÁRIO: ', '14 AS 23', 'HORÁRIO: ', 'FOLGA'],
+  [],
+  ['', '                                 MADRUGADA'],
+  [],
+  ['', 'VDI 5'],
+  ['', 'EDITOR: ', 'Carla Duarte'],
+  ['', 'HORÁRIO: ', '22 AS 6'],
+];
+async function aPlanilhaDeHoje(api) {
+  for (const ilha of [
+    { tipo: 'AVID', numero: '22' },
+    { tipo: 'AVID', numero: '30' },
+    { tipo: 'AVID', numero: '31' },
+    { tipo: 'VDI', numero: '5' },
+  ]) {
+    const r = await fetch(`${api}/cadastros/ilhas`, { method: 'POST', headers: { 'content-type': 'application/json', 'cf-access-authenticated-user-email': CHEFE }, body: JSON.stringify(ilha) });
+    assert.equal(r.status, 201, 'o cadastro das ilhas');
+  }
+  const pacote = { formato: 1, origem: { fluxo: 'e2e', execucao: '1' }, lida_em: new Date().toISOString(), todas_as_abas: ['HOJE'], abas: [{ aba: 'HOJE', intervalo: null, sheetId: 1, data_da_aba: null, linhas: GRADE_DE_HOJE, mesclas: [] }] };
+  const r = await fetch(`${api}/publico/edicao/foto`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${TOKEN_DA_FOTO}` }, body: JSON.stringify(pacote) });
+  assert.equal(r.status, 200, 'a foto da planilha');
+}
+
 async function principal() {
   const { TEABLE_FALSO, teableFalso } = await import(join(RAIZ, 'tests', 'fixtures', 'teable-falso.mjs'));
   const { comTabelas } = await import(join(RAIZ, 'servidor', 'tabelas-do-teable.mjs'));
@@ -1363,12 +1418,13 @@ async function principal() {
   const PG = { TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso' };
   // a produção da arte do mesmo Teable falso, para a carga das Produções (#96)
   const trello = { env: { ...PG, ...comTabelas({ ARTE_producao: 'arte_e2e' }) }, consultar: teable.consultar };
-  const env = { CADASTRO_ADMINS: CHEFE, ...TEABLE_FALSO, ...PG };
+  const env = { CADASTRO_ADMINS: CHEFE, ...TEABLE_FALSO, ...PG, EDICAO_FOTO_TOKEN: TOKEN_DA_FOTO };
   const cadastros = criarCadastros({ ...env, TEABLE_EDITORES: 'tblFalso_bseFalso_editores', TEABLE_KEY_EDITORES: 'tblFalso_bseFalso_KEY_editores' }, { buscar: teable });
   const s = await subir({ teable, pg: teable.abrirPg, trello, cadastros, env });
   const carga = await fetch(`${s.api}/producoes/recarregar`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': CHEFE } });
   assert.equal(carga.status, 200, 'a carga das Produções');
   await porAsProducoes(s.db);
+  await aPlanilhaDeHoje(s.api);
   for (const quem of [LIA, TOM, CARLA, DORA, RUI, COORD]) await fetch(`${s.api}/eu/tour`, { method: 'POST', headers: { 'cf-access-authenticated-user-email': quem } });
   const navegador = await chromium.launch();
   let falhou = false;
