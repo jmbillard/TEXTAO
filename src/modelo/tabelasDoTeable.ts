@@ -84,7 +84,8 @@ export const TABELAS_DO_TEABLE: readonly TabelaDoPROMeiro[] = [
     titulo: 'Projetos do Padeiro',
     variavel: '',
     api: ['aep', 'atracao', 'tipo', 'pasta', 'output', 'filme_ano', 'designer_login', 'designer_sigla', 'momento', 'card_ID', 'versao', 'data'],
-    pg: [],
+    // caminhos-da-arte.mjs (#202): a pasta de saída e o projeto de cada Produção, pelo card
+    pg: ['card_ID', 'aep', 'output', 'data'],
   },
   {
     nome: 'exibicoes',

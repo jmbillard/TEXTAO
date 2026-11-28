@@ -1,3 +1,4 @@
+import { CaminhosDaArte } from './CaminhosDaArte';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { escolhaLembradaDaPauta, lembrarNaPauta } from '../dados/armazenamento';
 import { EtiquetaDaCampanha } from './EtiquetaDaCampanha';
@@ -381,6 +382,13 @@ export function FichaDaClaquete({ linha: daPauta, linhas: todas, hoje, voce, pel
           </tbody>
         </table>
       ) : null}
+      {/* os caminhos da arte (#202): a pasta de saída e o projeto de cada Produção com projeto do Padeiro (a praça no
+          título, com mais de uma); sem projeto, nada */}
+      {producoes
+        .filter((p) => p.caminhos)
+        .map((p) => (
+          <CaminhosDaArte key={p.id} caminhos={p.caminhos!} titulo={producoes.length > 1 ? p.praca || undefined : undefined} />
+        ))}
 
       <h3>Na pauta</h3>
       <table className="pauta-ficha-tabela">

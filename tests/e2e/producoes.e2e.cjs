@@ -109,6 +109,15 @@ const linha = (id, fields) => ({
   fields: { status: '[]', designers: null, arquivado: false, entregue: false, praca: null, filme: null, ...fields },
   lastModifiedTime: [fields.data_entrada, fields.data_entrega].filter(Boolean).sort().pop() ?? ha(1),
 });
+/* Os caminhos da arte (#202): o registro do projeto do Padeiro (a tabela projetos, #144) do card da Festa na Praça,
+   criado no Windows e aberto depois no Mac. Servidor, volumes e pastas inventados. */
+const PROJETOS = [
+  { id: 'recPjE2e1', fields: { card_ID: card(2), aep: '\\\\servidor-ficticio\\ARTE\\SHOWS\\FESTA NA PRACA\\2026\\01_PROJETOS\\FESTA NA PRACA CHAMADA.aep', output: '\\\\servidor-ficticio\\SAIDA\\SHOWS\\FESTA NA PRACA', atracao: 'FESTA NA PRACA', momento: 'criado', data: ha(2) } },
+  { id: 'recPjE2e2', fields: { card_ID: card(2), aep: '/Volumes/ARTE/SHOWS/FESTA NA PRACA/2026/01_PROJETOS/FESTA NA PRACA CHAMADA V2.aep', atracao: 'FESTA NA PRACA', momento: 'aberto', data: ha(1) } },
+];
+const SAIDA_DA_FESTA = { win: '\\\\servidor-ficticio\\SAIDA\\SHOWS\\FESTA NA PRACA', mac: '/Volumes/SAIDA/SHOWS/FESTA NA PRACA' };
+const PROJETO_DA_FESTA = { win: '\\\\servidor-ficticio\\ARTE\\SHOWS\\FESTA NA PRACA\\2026\\01_PROJETOS\\FESTA NA PRACA CHAMADA V2.aep', mac: '/Volumes/ARTE/SHOWS/FESTA NA PRACA/2026/01_PROJETOS/FESTA NA PRACA CHAMADA V2.aep' };
+
 /** A produção da arte (fictícia). */
 const ARTE = [
   // SP: duas no mesmo prazo (a ALTA primeiro) e uma sem card com o prazo mais perto
@@ -1520,6 +1529,92 @@ async function filmar(navegador, url, db, api) {
  * tem o fogo em todas as artes, também na incluída, e o clique sobe o nível (#174). Nada de unha, nada de
  * check verde. Claro e escuro no computador; claro e escuro no celular, a tela toda.
  */
+/**
+ * Os caminhos da arte (#202) no card aberto: a mesma peça da ficha da Pauta, com a pasta de saída em destaque e o
+ * projeto, o copiar e a troca Windows / Mac; a Produção sem projeto do Padeiro não mostra nada. No computador e no
+ * celular, claro e escuro; com o movimento reduzido, nada anima.
+ */
+async function osCaminhosNoCardAberto(navegador, url) {
+  const semUnha = (l) =>
+    l.evaluate((raiz) =>
+      [raiz, ...raiz.querySelectorAll('*')]
+        .filter((e) => {
+          const c = getComputedStyle(e);
+          return parseFloat(c.borderLeftWidth) > 1 || /inset/.test(c.boxShadow) || parseFloat(c.borderInlineStartWidth) > 1;
+        })
+        .map((e) => e.className),
+    );
+  for (const [rotulo, opcoes] of [
+    ['computador', { viewport: { width: 1440, height: 1000 } }],
+    ['celular', devices['iPhone 13']],
+  ])
+    for (const tema of ['light', 'dark']) {
+      const nome = `${rotulo}-${tema === 'dark' ? 'escuro' : 'claro'}`;
+      const celular = rotulo === 'celular';
+      const { ctx, p, erros, aoTrello } = await abrir(navegador, url, { ...opcoes, colorScheme: tema });
+      await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: url });
+      const tocar = (l) => (celular ? l.tap() : l.click());
+      // a Novela (com card, sem projeto do Padeiro): nada dos caminhos
+      await tocar(cardDe(p, 'Novela Sinfonia').locator('.prod-claquete'));
+      let painel = p.getByRole('dialog');
+      await painel.locator('.pa-parte').waitFor();
+      assert.equal(await painel.locator('.caminhos-da-arte').count(), 0, `${nome}: sem projeto, nada aparece`);
+      assert.doesNotMatch(await painel.textContent(), /sem caminho|Caminhos da arte/i);
+      await tocar(painel.getByRole('button', { name: 'Fechar a Produção' }));
+      await painel.waitFor({ state: 'detached' });
+
+      await tocar(cardDe(p, 'Festa na Praça').locator('.prod-claquete'));
+      painel = p.getByRole('dialog');
+      const bloco = painel.locator('.caminhos-da-arte');
+      await bloco.waitFor();
+      await p.waitForTimeout(450);
+      // depois das artes e antes da linha do tempo, a pasta de saída primeiro
+      assert.deepEqual(await bloco.locator('.cda-caminho').evaluateAll((cs) => cs.map((c) => c.dataset.caminho)), ['saida', 'projeto']);
+      assert.ok(await bloco.evaluate((b) => !!b.previousElementSibling?.matches('.pa-parte') && !!b.nextElementSibling?.matches('.pa-tempo')), `${nome}: entre as artes e a linha do tempo`);
+      assert.equal(await bloco.getAttribute('aria-label'), 'Caminhos da arte', 'uma Produção só: sem a praça no título');
+      assert.deepEqual(await semUnha(bloco), [], `${nome}: sem unha`);
+      assert.deepEqual(await checksVerdes(p), [], `${nome}: nada de check verde`);
+      const texto = async (tipo) => (await bloco.locator(`.cda-${tipo} .cda-texto`).textContent()).trim();
+      assert.equal(await bloco.locator('.cda-sistema [aria-checked="true"]').textContent(), 'Windows');
+      assert.equal(await texto('saida'), SAIDA_DA_FESTA.win);
+      assert.equal(await texto('projeto'), PROJETO_DA_FESTA.win, 'o .aep mais novo (o aberto no Mac), no Windows');
+      await tocar(bloco.getByRole('radio', { name: 'Mac' }));
+      await p.waitForTimeout(260);
+      assert.equal(await texto('saida'), SAIDA_DA_FESTA.mac);
+      assert.equal(await texto('projeto'), PROJETO_DA_FESTA.mac);
+      // copiar o projeto: o caminho no Mac vai para a área de transferência
+      const copiar = bloco.locator('.cda-projeto .copiar-caminho');
+      await tocar(copiar);
+      await bloco.locator('.cda-projeto .copiar-caminho.copiado').waitFor();
+      assert.equal(await p.evaluate(() => navigator.clipboard.readText()), PROJETO_DA_FESTA.mac);
+      assert.deepEqual(await checksVerdes(p), [], `${nome}: o copiado sem check verde`);
+      if (celular) {
+        const alvos = await bloco.locator('.copiar-caminho, .cda-sistema button').evaluateAll((es) => es.map((e) => Math.round(e.getBoundingClientRect().height)));
+        assert.ok(alvos.every((h) => h >= 44), `${nome}: os alvos de 44 px (${alvos})`);
+        await semRolagemDeLado(p, `${nome}: o card aberto com os caminhos`);
+      }
+      await bloco.scrollIntoViewIfNeeded();
+      if (CAPTURAS) {
+        mkdirSync(CAPTURAS, { recursive: true });
+        await p.waitForTimeout(300);
+        await p.screenshot({ path: join(CAPTURAS, `70-caminhos-no-card-aberto-${nome}.png`) });
+      }
+      assert.deepEqual(aoTrello, [], 'nada vai ao Trello pelo navegador');
+      assert.deepEqual(erros, []);
+      await ctx.close();
+    }
+  // com o movimento reduzido, nada anima
+  const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
+  await cardDe(p, 'Festa na Praça').locator('.prod-claquete').click();
+  const saida = p.getByRole('dialog').locator('.cda-saida');
+  await saida.waitFor();
+  assert.equal(await saida.evaluate((e) => e.getAnimations().length), 0, 'com o movimento reduzido, o caminho não anima');
+  assert.equal(await p.getByRole('dialog').locator('.cda-pastilha').evaluate((e) => getComputedStyle(e).transitionDuration), '0s');
+  assert.deepEqual(erros, []);
+  await ctx.close();
+  console.log('ok: os caminhos da arte no card aberto de Produções (#202)');
+}
+
 async function oCardAberto(navegador, url, chamadasAoTrello, db) {
   // o palco: a Festa e a Novela com as artes de sempre, sem prazo mudado, sem atração escolhida, sem designer
   db.prepare("UPDATE producoes SET etapa = 'produzindo', designers = '[]', artes_marcadas = '[]', artes_apagadas = '[]', artes_novas = '[]', fogo_das_artes = '{}', atracao = NULL, prazo_em = NULL WHERE claquete LIKE 'Festa na Praça%' OR claquete LIKE 'Novela Sinfonia%'").run();
@@ -2176,7 +2271,7 @@ async function principal() {
     { id: 'recAtrE2e1', fields: { atracao: 'Domingo Show', categoria: 'Variedades' } },
     { id: 'recAtrE2e2', fields: { atracao: 'Festa na Praça', categoria: 'Shows' } },
   ];
-  const teable = teableFalso({ ARTE_producao: 'arte_e2e', designers: 'designers_e2e', atracoes: 'atracoes_e2e' }, { registros: { ARTE_producao: ARTE, designers: DESIGNERS, atracoes: ATRACOES } });
+  const teable = teableFalso({ ARTE_producao: 'arte_e2e', designers: 'designers_e2e', atracoes: 'atracoes_e2e', projetos: 'projetos_e2e' }, { registros: { ARTE_producao: ARTE, designers: DESIGNERS, atracoes: ATRACOES, projetos: PROJETOS } });
   const { criarCadastros } = await import(join(RAIZ, 'servidor', 'cadastros.mjs'));
   const PG = { TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso' };
   // o Trello de mentira só aceita escrita nos cards (#110): o que o servidor pede fica anotado; a leitura falha; o card
@@ -2247,6 +2342,8 @@ async function principal() {
     else if (process.env.SO === 'campanhas') await asCampanhas(navegador, s.url, chamadasAoTrello, s.db);
     // SO=filtro roda só o filtro por campanha (#179) e o vídeo dele
     else if (process.env.SO === 'filtro') await oFiltroDaCampanha(navegador, s.url, chamadasAoTrello, s.db, s.api);
+    // SO=caminhos roda só os caminhos da arte no card aberto (#202)
+    else if (process.env.SO === 'caminhos') await osCaminhosNoCardAberto(navegador, s.url);
     else if (process.env.SO === 'card-aberto') {
       await oCardAberto(navegador, s.url, chamadasAoTrello, s.db);
       await filmarOCardAberto(navegador, s.url, s.db);
@@ -2281,6 +2378,7 @@ async function principal() {
     await filmarOCardAberto(navegador, s.url, s.db);
     await asCampanhas(navegador, s.url, chamadasAoTrello, s.db);
     await oFiltroDaCampanha(navegador, s.url, chamadasAoTrello, s.db, s.api);
+    await osCaminhosNoCardAberto(navegador, s.url);
     await filmar(navegador, s.url, s.db, s.api);
   }
 }

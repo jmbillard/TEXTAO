@@ -127,12 +127,26 @@ for (let i = 0; i < 5; i++) {
   });
 }
 
+/* Os caminhos da arte (#202): os cards (inventados) das duas Produções do Show da Tarde e o registro do projeto do Padeiro
+   de cada um (a tabela projetos, #144): a G5 criada no Windows (com a pasta de saída) e aberta depois no Mac (o .aep
+   mais novo); a SP criada no Mac, com o volume montado de novo. Servidor, volumes e pastas inventados. */
+const CARD_G5 = 'cafe00000000000000e2e0g5';
+const CARD_SP = 'cafe00000000000000e2e0sp';
+const PASTA_DO_SHOW = 'SHOWS/SHOW DA TARDE/2026';
+const PROJETOS = [
+  { id: 'recPjE2e1', fields: { card_ID: CARD_G5, aep: `\\\\servidor-ficticio\\ARTE\\${PASTA_DO_SHOW.replace(/\//g, '\\')}\\01_PROJETOS\\SHOW DA TARDE CHAMADA.aep`, output: '\\\\servidor-ficticio\\SAIDA\\SHOWS\\SHOW DA TARDE', atracao: 'SHOW DA TARDE', momento: 'criado', data: sp(mais(hoje, -3), '11:00') } },
+  { id: 'recPjE2e2', fields: { card_ID: CARD_G5, aep: `/Volumes/ARTE/${PASTA_DO_SHOW}/01_PROJETOS/SHOW DA TARDE CHAMADA V2.aep`, atracao: 'SHOW DA TARDE', momento: 'aberto', data: sp(mais(hoje, -2), '09:30') } },
+  { id: 'recPjE2e3', fields: { card_ID: CARD_SP, aep: `/Volumes/ARTE-2/${PASTA_DO_SHOW}/SP/01_PROJETOS/SHOW DA TARDE SP.aep`, output: '/Volumes/SAIDA/SHOWS/SHOW DA TARDE/SP', atracao: 'SHOW DA TARDE', momento: 'criado', data: sp(mais(hoje, -2), '10:00') } },
+];
+const SAIDA_G5 = { win: '\\\\servidor-ficticio\\SAIDA\\SHOWS\\SHOW DA TARDE', mac: '/Volumes/SAIDA/SHOWS/SHOW DA TARDE' };
+const PROJETO_G5 = { win: `\\\\servidor-ficticio\\ARTE\\SHOWS\\SHOW DA TARDE\\2026\\01_PROJETOS\\SHOW DA TARDE CHAMADA V2.aep`, mac: `/Volumes/ARTE/${PASTA_DO_SHOW}/01_PROJETOS/SHOW DA TARDE CHAMADA V2.aep` };
+
 /** A produção da arte (fictícia) do Show da Tarde de hoje: a G5 entregue, com prioridade ALTA, e a de SP produzindo. */
 const ARTE = [
-  { id: 'recArteE2e1', fields: { card_ID: '', claquete: `Show da Tarde ${diaMes(hoje)}`, status: '["FINALIZADO"]', entregue: true, arquivado: false, designers: '["Dora Lima"]', artes: 'HOJE | AMANHÃ | hoje', prioridade: 'ALTA', praca: null, filme: null, data_entrada: sp(mais(hoje, -3), '10:00'), data_entrega: sp(mais(hoje, -1), '18:30') } },
+  { id: 'recArteE2e1', fields: { card_ID: CARD_G5, claquete: `Show da Tarde ${diaMes(hoje)}`, status: '["FINALIZADO"]', entregue: true, arquivado: false, designers: '["Dora Lima"]', artes: 'HOJE | AMANHÃ | hoje', prioridade: 'ALTA', praca: null, filme: null, data_entrada: sp(mais(hoje, -3), '10:00'), data_entrega: sp(mais(hoje, -1), '18:30') } },
   // a Festa da Carla de hoje, produzindo (o e2e do Dia a entrega no meio, para a contagem virar)
   { id: 'recArteE2e3', fields: { card_ID: '', claquete: `Festa da Vila(Prologo)${diaMes(mais(hoje, 2))}`, status: '["PRODUZINDO"]', entregue: false, arquivado: false, designers: '["Enzo Prado"]', artes: 'HOJE', praca: null, filme: null, data_entrada: sp(mais(hoje, -1), '10:00') } },
-  { id: 'recArteE2e2', fields: { card_ID: '', claquete: `Show da Tarde ${diaMes(hoje)} SP`, status: '["PRODUZINDO"]', entregue: false, arquivado: false, designers: '["Enzo Prado"]', artes: 'HOJE', praca: null, filme: null, data_entrada: sp(mais(hoje, -2), '10:00') } },
+  { id: 'recArteE2e2', fields: { card_ID: CARD_SP, claquete: `Show da Tarde ${diaMes(hoje)} SP`, status: '["PRODUZINDO"]', entregue: false, arquivado: false, designers: '["Enzo Prado"]', artes: 'HOJE', praca: null, filme: null, data_entrada: sp(mais(hoje, -2), '10:00') } },
 ];
 
 async function abrir(navegador, url, opcoes, hash = '#/pauta', agora = null, quem = LIA, relogio = null) {
@@ -1330,6 +1344,118 @@ async function aCampanha(navegador, url, api) {
   console.log('ok: a campanha na Pauta (#181)');
 }
 
+/** Nada de "unha" no bloco: nenhuma borda esquerda nem sombra por dentro em nenhum pedaço dele. */
+const unhas = (l) =>
+  l.evaluate((raiz) =>
+    [raiz, ...raiz.querySelectorAll('*')]
+      .filter((e) => {
+        const c = getComputedStyle(e);
+        return parseFloat(c.borderLeftWidth) > 1 || /inset/.test(c.boxShadow) || parseFloat(c.borderInlineStartWidth) > 1;
+      })
+      .map((e) => e.className),
+  );
+
+/**
+ * Os caminhos da arte (#202) na ficha da claquete: a pasta de saída em destaque e o projeto de cada Produção com projeto
+ * do Padeiro (a G5 e a SP do Show da Tarde), com o copiar, em Windows e Mac; a claquete sem projeto não mostra nada. No
+ * computador e no celular, claro e escuro; com o movimento reduzido, nada anima.
+ */
+async function osCaminhosDaArte(navegador, url) {
+  const tela = async (rotulo, opcoes, tema) => {
+    const nome = `${rotulo}-${tema === 'dark' ? 'escuro' : 'claro'}`;
+    const celular = rotulo === 'celular';
+    const { ctx, p, erros } = await abrir(navegador, url, { ...opcoes, colorScheme: tema });
+    await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: url });
+    await p.locator('.pauta-grade').waitFor();
+    // a claquete sem projeto do Padeiro (a Festa da Carla, sem card): nada dos caminhos
+    const festa = celula(p, 'Carla Duarte', hoje).locator('.pauta-claquete-botao').first();
+    await festa.scrollIntoViewIfNeeded();
+    await (celular ? festa.tap() : festa.click());
+    await painel(p).waitFor();
+    await p.locator('.pauta-ficha-producao').waitFor();
+    assert.equal(await painel(p).locator('.caminhos-da-arte').count(), 0, `${nome}: sem projeto, nada aparece`);
+    assert.doesNotMatch(await painel(p).textContent(), /sem caminho|Caminhos da arte/i, `${nome}: nem o "sem caminho"`);
+    await p.keyboard.press('Escape');
+    await fechou(p);
+
+    const show = celula(p, 'Bruno Teixeira', hoje).locator('.pauta-claquete-botao', { hasText: `Show da Tarde ${diaMes(hoje)}` }).first();
+    await show.scrollIntoViewIfNeeded();
+    await (celular ? show.tap() : show.click());
+    const blocos = painel(p).locator('.caminhos-da-arte');
+    await blocos.first().waitFor();
+    await p.waitForTimeout(450);
+    // um bloco por Produção com projeto, com a praça no título (a claquete tem duas)
+    assert.deepEqual(await blocos.evaluateAll((bs) => bs.map((b) => b.getAttribute('aria-label'))), ['Caminhos da arte · G5', 'Caminhos da arte · SP']);
+    const g5 = blocos.nth(0);
+    // a pasta de saída primeiro, em destaque (o fundo tingido, não a borda), e o projeto embaixo
+    assert.deepEqual(await g5.locator('.cda-caminho').evaluateAll((cs) => cs.map((c) => c.dataset.caminho)), ['saida', 'projeto']);
+    const fundo = (l) => l.evaluate((e) => getComputedStyle(e).backgroundColor);
+    assert.notEqual(await fundo(g5.locator('.cda-saida')), await fundo(g5.locator('.cda-projeto')), `${nome}: a pasta de saída tem o fundo dela`);
+    assert.match(await g5.locator('.cda-saida').textContent(), /Pasta de saída.*a edição pega o render aqui/);
+    assert.deepEqual(await unhas(painel(p).locator('.caminhos-da-arte').first()), [], `${nome}: sem unha`);
+    assert.deepEqual(await checksVerdes(p), [], `${nome}: nada de check verde`);
+    // o sistema começa no do navegador (o Chromium do e2e no Linux: Windows) e a troca leva os dois caminhos
+    const texto = async (l, tipo) => (await l.locator(`.cda-${tipo} .cda-texto`).textContent()).trim();
+    assert.equal(await g5.locator('.cda-sistema [aria-checked="true"]').textContent(), 'Windows');
+    assert.equal(await texto(g5, 'saida'), SAIDA_G5.win);
+    assert.equal(await texto(g5, 'projeto'), PROJETO_G5.win, 'o .aep mais novo, no Windows pelo servidor do volume');
+    assert.equal(await g5.locator('.cda-projeto .cda-texto b').textContent(), 'SHOW DA TARDE CHAMADA V2.aep', 'o nome do .aep em negrito');
+    const mac = g5.getByRole('radio', { name: 'Mac' });
+    await (celular ? mac.tap() : mac.click());
+    await p.waitForTimeout(260);
+    assert.equal(await texto(g5, 'saida'), SAIDA_G5.mac);
+    assert.equal(await texto(g5, 'projeto'), PROJETO_G5.mac);
+    // a pastilha deslizou para o Mac
+    const pastilha = await g5.locator('.cda-pastilha').evaluate((e) => e.getBoundingClientRect().left);
+    const doMac = await mac.evaluate((e) => e.getBoundingClientRect().left);
+    assert.ok(Math.abs(pastilha - doMac) <= 3, `${nome}: a pastilha no Mac (${pastilha} × ${doMac})`);
+    // a escolha vale para todos os caminhos à vista: a SP também no Mac. Ela veio do Mac, com o volume montado de novo:
+    // sem o -2; e, no Windows, pelo servidor que os outros registros dão
+    assert.equal(await blocos.nth(1).locator('.cda-sistema [aria-checked="true"]').textContent(), 'Mac');
+    assert.equal(await texto(blocos.nth(1), 'projeto'), `/Volumes/ARTE/${PASTA_DO_SHOW}/SP/01_PROJETOS/SHOW DA TARDE SP.aep`);
+    // copiar: o caminho no sistema escolhido vai para a área de transferência, e o botão diz "Copiado"
+    const copiar = g5.locator('.cda-saida .copiar-caminho');
+    await (celular ? copiar.tap() : copiar.click());
+    await g5.locator('.cda-saida .copiar-caminho.copiado').waitFor();
+    assert.equal((await copiar.textContent()).trim(), 'Copiado');
+    assert.equal(await p.evaluate(() => navigator.clipboard.readText()), SAIDA_G5.mac);
+    assert.deepEqual(await checksVerdes(p), [], `${nome}: o copiado também sem check verde`);
+    if (celular) {
+      // os alvos de 44 px: o copiar e a troca do sistema
+      const alvos = await painel(p).locator('.caminhos-da-arte .copiar-caminho, .caminhos-da-arte .cda-sistema button').evaluateAll((es) => es.map((e) => Math.round(e.getBoundingClientRect().height)));
+      assert.ok(alvos.every((h) => h >= 44), `${nome}: os alvos de 44 px (${alvos})`);
+      assert.ok(await painel(p).evaluate((e) => e.scrollWidth <= innerWidth + 1), `${nome}: a ficha não rola para o lado`);
+    }
+    await blocos.first().scrollIntoViewIfNeeded();
+    await p.waitForTimeout(250);
+    await capturar(p, `70-caminhos-da-arte-${nome}`, false);
+    assert.deepEqual(erros, []);
+    await ctx.close();
+  };
+  for (const tema of ['light', 'dark']) await tela('computador', { viewport: { width: 1440, height: 1000 } }, tema);
+  const { deviceScaleFactor, ...iphone } = devices['iPhone 13'];
+  for (const tema of ['light', 'dark']) await tela('celular', iphone, tema);
+
+  // o movimento: o bloco entra subindo, um caminho depois do outro; com o movimento reduzido, nada anima
+  for (const reduzido of [false, true]) {
+    const { ctx, p, erros } = await abrir(navegador, url, { viewport: { width: 1440, height: 1000 }, ...(reduzido ? { reducedMotion: 'reduce' } : {}) });
+    await p.locator('.pauta-grade').waitFor();
+    await celula(p, 'Bruno Teixeira', hoje).locator('.pauta-claquete-botao', { hasText: `Show da Tarde ${diaMes(hoje)}` }).first().click();
+    const saida = painel(p).locator('.caminhos-da-arte .cda-saida').first();
+    await saida.waitFor();
+    const anima = await saida.evaluate((e) => e.getAnimations().length);
+    if (reduzido) assert.equal(anima, 0, 'com o movimento reduzido, o caminho não anima');
+    else assert.ok(anima > 0, 'o caminho entra animando');
+    const atraso = await painel(p).locator('.caminhos-da-arte').first().locator('.cda-caminho').evaluateAll((cs) => cs.map((c) => getComputedStyle(c).animationDelay));
+    if (!reduzido) assert.deepEqual(atraso, ['0s', '0.06s'], 'um caminho depois do outro');
+    const transicao = await painel(p).locator('.cda-pastilha').first().evaluate((e) => getComputedStyle(e).transitionDuration);
+    assert.equal(transicao, reduzido ? '0s' : '0.2s', 'a pastilha desliza (parada com o movimento reduzido)');
+    assert.deepEqual(erros, []);
+    await ctx.close();
+  }
+  console.log('ok: os caminhos da arte na ficha da Pauta (#202)');
+}
+
 /**
  * As Produções das outras claquetes da pauta (#199: a Pauta só mostra as que casam), direto no SQLite, em Entrada: todas
  * menos as da produção da arte do Teable (a carga) e o Filme Sem Card, que fica de fora.
@@ -1358,8 +1484,9 @@ async function principal() {
     editores: [{ id: 'recEdCarla', fields: { editor: 'Carla Duarte', email: CARLA } }],
     KEY_editores: [],
     designers: [{ id: 'recDesDora', fields: { designer: 'Dora Lima', email: DORA, status: 'ativo' } }],
+    projetos: PROJETOS,
   };
-  const teable = teableFalso({ EDICAO_producao: 'pauta_e2e', ARTE_producao: 'arte_e2e', editores: 'editores_e2e', KEY_editores: 'key_editores_e2e', designers: 'designers_e2e' }, { registros });
+  const teable = teableFalso({ EDICAO_producao: 'pauta_e2e', ARTE_producao: 'arte_e2e', editores: 'editores_e2e', KEY_editores: 'key_editores_e2e', designers: 'designers_e2e', projetos: 'projetos_e2e' }, { registros });
   const PG = { TEABLE_PG_URL: 'postgres://falso', TEABLE_PG_ESQUEMA: 'bseFalso' };
   // a produção da arte do mesmo Teable falso, para a carga das Produções (#96)
   const trello = { env: { ...PG, ...comTabelas({ ARTE_producao: 'arte_e2e' }) }, consultar: teable.consultar };
@@ -1375,6 +1502,8 @@ async function principal() {
   try {
     // SO=campanha roda só a etiqueta da campanha (#181)
     if (process.env.SO === 'campanha') return void (await aCampanha(navegador, s.url, s.api));
+    // SO=caminhos roda só os caminhos da arte (#202)
+    if (process.env.SO === 'caminhos') return void (await osCaminhosDaArte(navegador, s.url));
     await aSemanaNoSafari(navegador, s.url);
     await oSobrouPorPerfil(navegador, s.url, s.api);
     await aInfoNoBalao(navegador, s.url);
@@ -1391,6 +1520,7 @@ async function principal() {
     await oMovimento(navegador, s.url);
     await osContadores(navegador, s.url);
     await aCampanha(navegador, s.url, s.api);
+    await osCaminhosDaArte(navegador, s.url);
   } catch (e) {
     falhou = true;
     console.error(e);

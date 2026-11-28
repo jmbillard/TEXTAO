@@ -4,6 +4,7 @@
    meia-noite conta no dia em que começou). Os editores vêm na ordem do turno de costume; sem editor, no fim. As versões
    da chamada (#95) saem do código no fim da claquete, já resolvidas em etiquetas legíveis. A claquete cruza com as
    Produções (#96) pela chave. Os filtros pessoais e o resumo do administrador (#99) também moram aqui. */
+import type { CaminhosDaArte } from './caminhosDaArte';
 import type { ForaNaPauta } from './ausencias.ts';
 import { campanhasDasProducoes, type CampanhaDoCard } from './campanhas.ts';
 import { PARADAS, continua } from './frasePartida.ts';
@@ -66,6 +67,8 @@ export interface ProducaoNaPauta {
   campanhas?: CampanhaDoCard[];
   /** o Roteiro escrito no PROMeiro de onde saiu o roteiro da Produção (#197): a ficha da claquete abre o último envio */
   escrito?: string;
+  /** os caminhos da arte (#202): a pasta de saída e o projeto, do registro do projeto do Padeiro pelo card; ausente sem projeto */
+  caminhos?: CaminhosDaArte;
 }
 
 /** A Semana da pauta: a rota GET /api/pauta/semana. */

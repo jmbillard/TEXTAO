@@ -1140,6 +1140,15 @@ export function criarProducoes(db) {
       return l ? daLinha(l) : null;
     },
     naPauta,
+    /** O card de cada Produção pedida que tem card (#202, os caminhos da arte): { id: card }. */
+    cardsDe: (ids) => {
+      const saida = {};
+      for (const id of new Set(ids)) {
+        const card = typeof id === 'string' ? q.doId.get(id)?.card_id : null;
+        if (card) saida[id] = card;
+      }
+      return saida;
+    },
     /** Os ids das Produções desde a data que têm card no Trello (#199, a lista de claquetes do Montar a pauta). */
     comCard: (desde) => new Set(q.comCard.all(desde).map((l) => l.id)),
     porAtracao,

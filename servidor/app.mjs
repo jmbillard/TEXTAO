@@ -63,6 +63,7 @@ import { CABECALHO_DA_CHAVE, criarPadeiros } from './padeiros.mjs';
 import { DIAS_ANTES, DIAS_ANTES_DA_AGENDA, DIAS_DEPOIS, agendaDeFilmes, diaEmBrasilia, filmesRecentes, horaDeBrasilia, somarDias } from './filmes-recentes.mjs';
 import { DIAS_DO_TRELLO, criarIndiceDoBuscar, dasAtracoes, doTrello, montarIndice } from './indice-do-buscar.mjs';
 import { criarProjetoDoPadeiro } from './projeto-do-padeiro.mjs';
+import { criarCaminhosDaArte } from './caminhos-da-arte.mjs';
 import { designerSugerido } from '../src/modelo/padeiros.ts';
 import { ausenciaDoPedido, criarAusencias } from './ausencias.mjs';
 import { foraNaPauta, motivoDaAusencia } from '../src/modelo/ausencias.ts';
@@ -528,7 +529,7 @@ const FABRICAS = {
   filmes: (env, { db, trello, abrirPg, anexos }) => criarFilmes(env, { db, pasta: env.FILMES_PASTA, trello, abrirPg, anexos }),
 };
 /** Os módulos que são refeitos quando a configuração muda (e fechados, os antigos, quando terminam o que faziam). */
-const RECRIADOS = ['trello', 'acervo', 'vocabulario', 'pauta', 'cadastros', 'redatorProvavel', 'duplicadas', 'correcoes', 'juntarAtracoes', 'indiceDoBuscar'];
+const RECRIADOS = ['trello', 'acervo', 'vocabulario', 'pauta', 'cadastros', 'redatorProvavel', 'duplicadas', 'correcoes', 'juntarAtracoes', 'indiceDoBuscar', 'caminhosDaArte'];
 const fazer = (f, env, deps) => (typeof f === 'function' ? f(env, deps) : f);
 /** O modo só olhar das Duplicadas (#67): ligado até alguém desligar (DUPLICADAS_SO_OLHAR=0), para os primeiros dias
     da comparação com o relatório do n8n. */
@@ -656,6 +657,8 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     g.juntarAtracoes = criarJuntarAtracoes(env, { buscar: buscarNoTeable, abrir, acervo: g.acervo, regras: regrasDaAtracao });
     // o índice do buscar do Padeiro (#143): os filmes e as mensagens do Teams, do Postgres do Teable (só leitura)
     g.indiceDoBuscar = criarIndiceDoBuscar(env, { abrirPg: abrir });
+    // os caminhos da arte (#202): a pasta de saída e o projeto de cada Produção, do registro do projeto do Padeiro (só leitura)
+    g.caminhosDaArte = criarCaminhosDaArte(env, { abrirPg: abrir });
     g.cadastros = fazer(fabricas.cadastros, env, { vocabulario: g.vocabulario });
     g.redatorProvavel = fazer(fabricas.redatorProvavel, env, { abrirPg: abrir });
     g.duplicadas = fazer(fabricas.duplicadas, env, { trello: g.trello, acervo: g.acervo, registro: registroDasDuplicadas, promeiro: promeiroDasDuplicadas });
@@ -4055,9 +4058,14 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
       // cada Produção com as versões lidas do roteiro dela (#152), o valor inicial da claquete sem código no nome, e as
       // campanhas dela (#181): a etiqueta da claquete sai deste cruzamento, a claquete não guarda nada
       const campanhasDe = campanhas.porProducao();
-      const comAsLidas = producoes.naPauta(desde).map((p) => {
+      // os caminhos da arte (#202): pelo card de cada Produção, no registro do projeto do Padeiro; sem projeto, nada
+      const daPauta = producoes.naPauta(desde);
+      const cardDe = producoes.cardsDe(daPauta.map((p) => p.id));
+      const caminhosDe = await geracao.caminhosDaArte.dosCards(Object.values(cardDe));
+      const comAsLidas = daPauta.map((p) => {
         const { lidas } = apelidos.roteiroDaProducao(p.id);
-        return { ...p, ...(lidas.length ? { versoesLidas: lidas } : {}), campanhas: campanhasDe(p.id) };
+        const caminhos = caminhosDe[cardDe[p.id]];
+        return { ...p, ...(lidas.length ? { versoesLidas: lidas } : {}), campanhas: campanhasDe(p.id), ...(caminhos ? { caminhos } : {}) };
       });
       const cruzadas = cruzarComAProducao(s.linhas, comAsLidas, semPraca);
       // só as claquetes que casam com uma Produção (#199, ADR 0008): a tarefa e a claquete sem Produção ficam no
@@ -4643,8 +4651,12 @@ export function criarApp({ db, env: portainer = process.env, estaticos = null, c
     const j = producoes.naJanela(id);
     const fogo = j ? fogoDasArtes(j) : () => null;
     const roteiro = producoes.roteiroDe(id);
+    // os caminhos da arte (#202): a pasta de saída e o projeto, do registro do projeto do Padeiro pelo card
+    const card = producoes.cardsDe([id])[id];
+    const caminhos = card ? (await geracao.caminhosDaArte.dosCards([card]))[card] : null;
     return {
       ...aberta,
+      ...(caminhos ? { caminhos } : {}),
       artesDoCard: (j?.artes ?? []).map((a) => ({ nome: a.nome, itens: a.itens, feita: a.feita, fogo: fogo(a) })),
       // a versão do Roteiro, pela regra de versaoDoRoteiro (src/modelo/versoes.ts): V1 sem versão nova
       roteiro: roteiro ? { versao: Math.max(Number(roteiro.meta.versao) || 1, roteiro.meta.v2De ? 2 : 1), em: roteiro.criadoEm } : null,

@@ -496,6 +496,13 @@ chave ligada), que também cadastra a atração nova, liga o card a ela e põe o
 "PROMO - PROJETO" do n8n fazia. Não é o **aviso do Padeiro** (o Peguei): o registro não muda a etapa da Produção.
 _Evitar_: log do projeto
 
+**Caminhos da arte**:
+A **pasta de saída** (o output, de onde a edição pega o render) e o **projeto** (o `.aep`) de uma Produção, em Windows e
+Mac, mostrados com o copiar na ficha da claquete da Pauta e no card aberto de Produções. Saem do **registro do projeto**
+pelo card da Produção; com vários registros, vale o mais novo de cada caminho. O caminho que chegou do Mac ganha o do
+Windows pelo servidor do mesmo volume visto em outro registro. Sem projeto registrado, nada aparece.
+_Evitar_: path, output (na tela, é a pasta de saída)
+
 **Chave do Padeiro**:
 O que identifica o Padeiro no PROMeiro: uma chave por usuário e por computador. O Padeiro se cadastra com o usuário do
 computador e a sigla do designer; o cadastro fica **pendente** até um administrador ligar a chave ao designer. A chave

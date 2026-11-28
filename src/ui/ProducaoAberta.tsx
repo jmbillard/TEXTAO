@@ -1,3 +1,4 @@
+import { CaminhosDaArte } from './CaminhosDaArte';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { apelidoDaProducao, useApelidos } from '../dados/apelidos';
 import {
@@ -535,6 +536,9 @@ function ConteudoDaProducao({ card, inicial = null, hoje, prazoEscrito, voce, et
                 </form>
               ))}
           </section>
+
+          {/* os caminhos da arte (#202): a mesma peça da ficha da Pauta; sem projeto do Padeiro, nada */}
+          {lida.caminhos && <CaminhosDaArte caminhos={lida.caminhos} />}
 
           <section className="pa-tempo">
             <button type="button" className="botao-texto pa-tempo-link" aria-expanded={tempo} aria-controls="pa-tempo-lista" onClick={() => setTempo((t) => !t)}>

@@ -66,6 +66,8 @@ O e2e confere com `lugarDaLupa`, de `tests/e2e/coerencia.cjs`. Os Cadastros têm
 | `MarcaTexto` | `pecas.tsx` | A passada de marca-texto da claquete de prioridade. | A prioridade, onde a claquete aparece. |
 | `FolhaComDiferencas` | `Comparar.tsx` | A folha com o texto e o que entrou e saiu marcado, com a anotação à mão. | A comparação da versão nova e o envio aberto no histórico da folha de escrita (#194). |
 | `Riscado` | `Comparar.tsx` | O risco à mão que atravessa cada linha do texto. | O que saiu do roteiro e a arte que já existe. |
+| `CaminhosDaArte` | `CaminhosDaArte.tsx` | Os caminhos da arte de uma Produção (#202): a pasta de saída em destaque (o fundo tingido de laranja; é de onde a edição pega o render) e o projeto (`.aep`, o nome em negrito), cada um com o copiar, e a troca Windows / Mac (a pastilha que desliza; começa no sistema de quem vê, vale para todos os caminhos à vista e fica lembrada no navegador). Entra subindo, um caminho depois do outro. Sem projeto do Padeiro, quem usa não põe a peça: nada aparece. | A ficha da claquete na Pauta (um bloco por Produção, com a praça no título) e o card aberto de Produções. |
+| `BotaoDeCopiar` | `CaminhosDaArte.tsx` | O copiar de um caminho: troca o texto por "Copiado" em laranja (nunca um ✓) e, na falha, "Não consegui copiar". `primario` para o destaque; `aoCopiar` para o aviso de quem usa. | Todo caminho com copiar: os caminhos da arte e os dos Filmes. |
 | `BalaoDeInfo` | `BalaoDeInfo.tsx` | O balão de fala que abre o texto ali mesmo. | A observação de uma claquete ou de uma posição. |
 | `FogoComTroca` | `fogo.tsx` | O fogo da complexidade, com a troca cruzada de nível. | Onde a complexidade da arte muda. |
 

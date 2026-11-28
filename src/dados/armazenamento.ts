@@ -1,3 +1,4 @@
+import type { CaminhosDaArte } from '../modelo/caminhosDaArte';
 import type { Ausencia, EscaladaNoDia, PainelDasAusencias } from '../modelo/ausencias';
 import { chaveDaClaquete, naPauta, redatoresDoCadastro, registrarVocabulario, type VocabularioExterno } from '../modelo/vocabularios';
 import { registrarPracas } from '../modelo/pracas';
@@ -1681,6 +1682,8 @@ export interface ProducaoAberta extends LinhaDoTempo {
   campanhas?: CampanhaDoCard[];
   todasAsCampanhas?: CampanhaDoCard[];
   podeLigarCampanhas?: boolean;
+  /** #202: a pasta de saída e o projeto, do registro do projeto do Padeiro pelo card; ausente sem projeto */
+  caminhos?: CaminhosDaArte;
 }
 /** Uma arte no card aberto (#160): o nome, os itens do checklist dela, se está feita e o fogo (1 a 3, com ou sem Roteiro, #174). */
 export interface ArteDoCard {

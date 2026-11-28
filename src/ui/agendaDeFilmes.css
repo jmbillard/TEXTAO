@@ -148,13 +148,9 @@
 .ficha-filme-caminho-rotulo { font: 600 11px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--tinta3); }
 .ficha-filme-caminho code { min-width: 0; font: 500 12.5px/1.4 var(--mono); color: var(--tinta); overflow-wrap: anywhere; }
 .ficha-filme-vazio { font-size: 13px; color: var(--tinta3); }
-.ficha-filme-copiar { height: 32px; padding: 0 11px; border-radius: 9px; gap: 6px; font-size: 12.5px; white-space: nowrap; transition: background-color var(--rapido) var(--suave), color var(--rapido) var(--suave), border-color var(--rapido) var(--suave); }
-.ficha-filme-copiar.copiado { color: var(--ultra); border-color: color-mix(in srgb, var(--ultra) 40%, var(--regua)); background: color-mix(in srgb, var(--ultra-suave) 60%, transparent); }
-.ficha-filme-copiar-texto { display: inline-block; animation: trocar-texto 0.22s var(--suave); }
-@keyframes trocar-texto { from { opacity: 0; transform: translateY(3px); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .poster-filme, .poster-esperando, .ficha-filme-copiar-texto, .soltar.da-previa .soltar-cartao, .soltar.da-previa .fila-vazia-icone, .soltar-formiga rect, .convite-previa.subindo .fila-vazia-icone svg { animation: none !important; }
+  .poster-filme, .poster-esperando, .soltar.da-previa .soltar-cartao, .soltar.da-previa .fila-vazia-icone, .soltar-formiga rect, .convite-previa.subindo .fila-vazia-icone svg { animation: none !important; }
   .convite-previa .fila-vazia-icone { transition: none; }
   .poster-filme-capa img, .ficha-filme-capa img { transition: none; }
 }
@@ -172,7 +168,6 @@
   .ficha-filme-sessao { justify-self: start; text-align: left; }
   .ficha-filme-caminho { grid-template-columns: minmax(0, 1fr) auto; }
   .ficha-filme-caminho-rotulo { grid-column: 1 / -1; }
-  .ficha-filme-copiar { height: 44px; }
 }
 /* no celular, a capa pequena ao lado do título; as exibições embaixo, na largura toda */
 @media (max-width: 600px) {

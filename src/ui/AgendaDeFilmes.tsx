@@ -14,7 +14,8 @@ import { BolinhaDeEstado, Vazio } from './pecas';
 import { relativoA } from './pecasDaPauta';
 import { ItemQueAbre, Periodo, ResumoQueConta, TopoDoDia, VoltarParaHoje, useContagemDoPeriodo, type PalavrasDoResumo } from './topoDaAgenda';
 import { useTrocaDeSemana } from './trocaDeSemana';
-import { copiarTexto, dataCurtaComDia, dataPorExtenso, ehMac, plural } from './util';
+import { BotaoDeCopiar } from './CaminhosDaArte';
+import { dataCurtaComDia, dataPorExtenso, ehMac, plural } from './util';
 import './fontes/bebas-neue/bebas-neue.css';
 import './agendaDeFilmes.css';
 
@@ -399,31 +400,12 @@ function ProducaoDaExibicao({ e }: { e: ExibicaoDoFilme }) {
 
 /** Um caminho de pasta com o "Copiar caminho" (o do sistema da pessoa). */
 function Caminho({ rotulo, caminho, avisar }: { rotulo: string; caminho: string; avisar: (t: string) => void }) {
-  const [copiado, setCopiado] = useState(false);
-  useEffect(() => {
-    if (!copiado) return;
-    const t = setTimeout(() => setCopiado(false), 1800);
-    return () => clearTimeout(t);
-  }, [copiado]);
   return (
     <div className="ficha-filme-caminho">
       <span className="ficha-filme-caminho-rotulo">{rotulo}</span>
       {caminho ? <code title={caminho}>{caminho}</code> : <span className="ficha-filme-vazio">sem caminho no cadastro</span>}
-      {caminho && (
-        <button
-          type="button"
-          className={`botao ficha-filme-copiar ${copiado ? 'copiado' : ''}`}
-          onClick={() =>
-            void copiarTexto(caminho).then(
-              () => (setCopiado(true), avisar(`Caminho ${rotulo === 'Projeto' ? 'do projeto' : 'do output'} copiado`)),
-              () => avisar('Não consegui copiar o caminho.'),
-            )
-          }
-        >
-          <Icone nome="copiar" tam={14} traco={1.8} />
-          <span className="ficha-filme-copiar-texto" key={String(copiado)}>{copiado ? 'Copiado' : 'Copiar caminho'}</span>
-        </button>
-      )}
+      {/* o mesmo copiar dos caminhos da arte (#202) */}
+      {caminho && <BotaoDeCopiar texto={caminho} aoCopiar={(ok) => avisar(ok ? `Caminho ${rotulo === 'Projeto' ? 'do projeto' : 'do output'} copiado` : 'Não consegui copiar o caminho.')} />}
     </div>
   );
 }
