@@ -10,6 +10,8 @@ import HardBreak from '@tiptap/extension-hard-break';
 import History from '@tiptap/extension-history';
 import Italic from '@tiptap/extension-italic';
 import Paragraph from '@tiptap/extension-paragraph';
+// o tipo do trecho guardado no parágrafo (#187): o schema precisa dele para abrir o roteiro escrito no PROMeiro
+import { TipoDoTrecho } from '../editor/extensoes';
 import Text from '@tiptap/extension-text';
 import { redoDepth, undoDepth } from '@tiptap/pm/history';
 import Collaboration from '@tiptap/extension-collaboration';
@@ -579,7 +581,7 @@ function Folha({ inicial, voltar, abrir, comparar, avisar, pessoa, cadastrarAtra
   const editor = useEditor({
     extensions: [
       Document, Paragraph, Text, Bold, Italic, HardBreak,
-      Arte, Etiqueta, Imagem, Linha, Celula, Reconhecimento, Teclado.configure({ programa: () => metaRef.current.programa }),
+      Arte, Etiqueta, Imagem, Linha, Celula, TipoDoTrecho, Reconhecimento, Teclado.configure({ programa: () => metaRef.current.programa }),
       SoMarcas.configure({ aviso: () => avisoTexto.current(), destravado: () => destravadoRef.current, comCadeado: (tr) => mudancaComCadeado.current(tr) }),
       ...(sala
         ? [
