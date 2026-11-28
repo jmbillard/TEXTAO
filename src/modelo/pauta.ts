@@ -62,6 +62,8 @@ export interface ProducaoNaPauta {
   letraEVersao?: string;
   /** as campanhas da Produção (#181), a primeira ligada primeiro: a etiqueta da claquete sai daqui */
   campanhas?: CampanhaDoCard[];
+  /** o Roteiro escrito no PROMeiro de onde saiu o roteiro da Produção (#197): a ficha da claquete abre o último envio */
+  escrito?: string;
 }
 
 /** A Semana da pauta: a rota GET /api/pauta/semana. */
