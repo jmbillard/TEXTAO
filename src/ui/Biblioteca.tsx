@@ -1077,6 +1077,7 @@ const CONVITES_AO_LADO = CONVITES.filter((f) => f !== 'Fila em dia!');
 export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, receberArquivos, criar, avisar, identidade, definirPerfil, novos, falhas, tirarFalha, chegou, lendo, cadastros, filmes, configuracao, andamentoDoProjeto, correcoes, pauta, montarPauta, producoes, campanhas, buscaInicial = '', seletorDeArea }: Props) {
   const [roteiros, setRoteiros] = useState<Resumo[] | null>(null);
   const [busca, setBusca] = useState(buscaInicial);
+  const celular = useTelaDeCelular();
   // os enfeites de fim de ano: só na tela inicial, e não com a comparação aberta por cima
   const temaDaData = useTemaDaData();
   const [enfeitesSim, setEnfeitesSim] = useState(enfeitesLigados);
@@ -1348,6 +1349,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
   const porId = new Map(todos.map((r) => [r.id, r]));
   // durante o "desfazer" a fila já fica como vai ficar (sem trocar de tela de novo quando o prazo acaba)
   const vazio = roteiros !== null && !todos.length && !falhas.length && !lendo;
+  const lupa = roteiros !== null && (todos.length > 0 || !!busca) && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aoFundo} className="lupa-da-fila" />;
   let ordem = 0;
 
   const ficha = (r: Resumo) => {
@@ -1427,8 +1429,9 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
         {/* os caminhos (#156, #168): a fila (aqui, o aberto), a tela de produções (#109), a aba Filmes e a Pauta da edição (#94) */}
         <CaminhosDoTopo atual="agenda" agenda={naFila} producoes={producoes} campanhas={campanhas} filmes={temFilmes() ? filmes : undefined} pauta={pauta} montar={pauta && montarPauta} />
         <span className="espaco" />
-        {/* toda tela de lista ou agenda tem a lupa (#171): ela busca na fila e na agenda No Trello */}
-        {roteiros !== null && (todos.length > 0 || !!busca) && <BuscaNaLupa valor={busca} mudar={setBusca} ativa={!aoFundo} />}
+        {/* toda tela de lista ou agenda tem a lupa (#171): ela busca na fila e na agenda No Trello. No celular, ela fica
+            ao lado do título, como nas Produções (o topo é o mesmo entre as telas) */}
+        {!celular && lupa}
         {colegas.length > 0 && (
           <div className="na-fila" title={`Também com a fila aberta: ${colegas.map((c) => c.nome).join(', ')}`}>
             {colegas.slice(0, 5).map((c) => (
@@ -1477,6 +1480,7 @@ export function Biblioteca({ abrir, aoFundo = false, comparar, abrirArquivo, rec
           roteiros && (
             <section className="lista">
               <div className="fila-topo">
+                {celular && lupa}
                 <div className="fila-titulo">
                   <h2 className="titulo-serifa">
                     {nPendentes || !lendo ? (

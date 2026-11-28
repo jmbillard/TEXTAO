@@ -2836,6 +2836,11 @@ body:has(.estatisticas) .botao-atalhos { bottom: calc(58px + env(safe-area-inset
   .conta-filtro { min-height: 44px; padding: 0 9px; }
   /* o "R revisar o próximo" é de teclado */
   .tecla-proximo { display: none; }
+  /* a lupa da fila (#171): no celular, ao lado do título, como nas Produções; aberta, cobre a linha do título */
+  .fila-topo { position: relative; }
+  .fila-topo > .lupa-da-fila { position: absolute; top: 0; right: 0; z-index: 2; }
+  .fila-topo > .lupa-da-fila.aberta { left: 0; width: auto; }
+  .fila-topo:has(> .lupa-da-fila) .fila-titulo h2 { padding-right: 52px; }
 
   /* ---- o convite em duas linhas: o ícone, a frase e os formatos em cima; só o Escolher arquivos embaixo ---- */
   .convite-compacto { margin-top: 14px; display: grid; grid-template-columns: 44px minmax(0, 1fr); grid-template-areas: 'icone texto' 'acoes acoes'; align-items: center; gap: 12px; padding: 14px; }
