@@ -12,7 +12,7 @@
 
 /* as abas dos dias da semana */
 .montar-abas { position: relative; display: flex; align-items: flex-end; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--regua-forte); margin: 4px 0 16px; scrollbar-width: none; }
-.montar-abas .botao-icone { flex: none; align-self: center; margin-bottom: 4px; }
+.montar-abas .botao-icone, .montar-abas .ct-voltar { flex: none; align-self: center; margin-bottom: 4px; }
 .montar-aba { flex: none; display: flex; align-items: center; gap: 7px; margin-bottom: -1px; padding: 8px 14px 9px; border: 1px solid transparent; border-bottom: 0; border-radius: 10px 10px 0 0; background: none; color: var(--tinta3); font: 600 12px var(--sans); letter-spacing: 0.06em; white-space: nowrap; cursor: pointer; }
 .montar-aba:hover { color: var(--tinta); }
 .montar-aba[aria-current='page'] { background: var(--cartao); border-color: var(--regua-forte); color: var(--tinta); }
@@ -135,7 +135,7 @@
 /* o "Mover para…" (⇄, #163): nas claquetes atribuídas e nas de "Para distribuir", em qualquer largura. Discreto: sem
    borda e sem fundo, em cinza claro; acende no mouse e no foco. A área de toque é de 44 px, no meio da claquete, à
    direita (o texto deixa o lugar dele). */
-.coluna-destino.mover-menu { position: absolute; top: 50%; right: 0; z-index: 1; width: 44px; max-width: 44px; height: 44px; padding: 0; transform: translateY(-50%); border: 0; border-radius: 10px; background: transparent; color: var(--tinta3); opacity: 0.5; font: 400 15px/1 var(--sans); text-align: center; text-align-last: center; appearance: none; -webkit-appearance: none; cursor: pointer; transition: opacity 0.15s var(--suave), background 0.15s var(--suave), color 0.15s var(--suave); }
+.coluna-destino.mover-menu { position: absolute; top: 50%; right: 0; z-index: 1; width: 44px; max-width: 44px; height: 44px; padding: 0; transform: translateY(-50%); border: 0; border-radius: 10px; background: transparent; color: var(--tinta3); opacity: 0.5; font: 400 15px/1 var(--sans); text-align: center; text-align-last: center; appearance: none; -webkit-appearance: none; cursor: pointer; transition: opacity var(--rapido) var(--suave), background var(--rapido) var(--suave), color var(--rapido) var(--suave); }
 .coluna-claquete:hover > .mover-menu, .montar-demanda:hover > .mover-menu, .coluna-destino.mover-menu:focus-visible { opacity: 1; }
 .coluna-destino.mover-menu:hover, .coluna-destino.mover-menu:focus { border: 0; background: color-mix(in srgb, var(--tinta) 6%, transparent); color: var(--tinta); }
 @media (hover: none) { .coluna-destino.mover-menu { opacity: 0.7; } }
@@ -181,12 +181,12 @@ body.arrastando, body.arrastando * { cursor: grabbing !important; user-select: n
 .juntos-no-dia .presentes { padding-left: 6px; }
 .juntos-no-dia .presente { width: 24px; height: 24px; font-size: 10px; line-height: 24px; box-shadow: 0 0 0 2px var(--mesa); }
 /* a marca anda pelo transform (#171), sem animar o layout */
-.marca-do-outro { position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none; border-radius: 8px; box-shadow: 0 0 0 2px var(--cor-do-outro); transition: transform 0.15s var(--suave), width 0.15s var(--suave), height 0.15s var(--suave); }
+.marca-do-outro { position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none; border-radius: 8px; box-shadow: 0 0 0 2px var(--cor-do-outro); transition: transform var(--rapido) var(--suave), width var(--rapido) var(--suave), height var(--rapido) var(--suave); }
 .marca-do-outro-nome { position: absolute; right: 6px; bottom: 100%; margin-bottom: 1px; padding: 2px 7px; border-radius: 6px 6px 6px 2px; background: var(--cor-do-outro); color: #fff; font: 600 10.5px/1.3 var(--sans); white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .marca-do-outro { transition: none; } }
 
 /* a busca do dia (#171): a lupa das outras telas; a claquete que não bate esmaece, a grade fica inteira */
-.montar-demanda, .coluna-claquete { transition: opacity 0.2s var(--suave); }
+.montar-demanda, .coluna-claquete { transition: opacity var(--medio) var(--suave); }
 .montar-demanda.fora-da-busca, .coluna-claquete.fora-da-busca { opacity: 0.3; }
 .montar-achadas { margin: -4px 0 12px; }
 .montar-achadas:not(.vazio-a-mao) { font: 500 12.5px var(--sans); color: var(--tinta3); }

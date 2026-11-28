@@ -3,9 +3,9 @@
    o estado vai na bolinha, na etiqueta ou no fundo tingido. */
 
 /* ---------- a área de soltar (o convite da fila, .fila-vazia) ---------- */
-.convite-previa { position: relative; padding: 40px 20px 34px; gap: 8px; background: var(--papel); transition: border-color 0.2s var(--suave), background-color 0.2s var(--suave), transform 0.28s var(--suave), box-shadow 0.28s var(--suave); }
+.convite-previa { position: relative; padding: 40px 20px 34px; gap: 8px; background: var(--papel); transition: border-color var(--medio) var(--suave), background-color var(--medio) var(--suave), transform 0.28s var(--suave), box-shadow 0.28s var(--suave); }
 .convite-previa h2 { font-size: 30px; min-height: 1.15em; }
-.convite-previa .fila-vazia-icone { transition: transform 0.35s var(--suave), background-color 0.2s var(--suave); }
+.convite-previa .fila-vazia-icone { transition: transform 0.35s var(--suave), background-color var(--medio) var(--suave); }
 .convite-previa:hover .fila-vazia-icone { transform: translateY(-2px); }
 /* a borda que marcha, por cima da tracejada do cartão de soltar (o mesmo da fila) */
 .soltar-formiga { position: absolute; inset: -2px; width: calc(100% + 4px); height: calc(100% + 4px); pointer-events: none; overflow: visible; }
@@ -57,7 +57,7 @@
 /* a busca (ui/ListaDeAchados.tsx, a mesma de Produções): no lugar da agenda; cada linha com a capa pequena, o título,
    a sessão, o dia e, na bolinha, se já passou, se passa hoje ou se vai passar */
 .agenda-filmes > .filmes-busca { display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; animation: chegar-busca var(--dur) var(--suave) both; }
-.agenda-filmes > .filmes-busca.saindo { animation: sair-busca 0.2s var(--suave) both; pointer-events: none; }
+.agenda-filmes > .filmes-busca.saindo { animation: sair-busca var(--medio) var(--suave) both; pointer-events: none; }
 .filmes-busca .prod-busca-topo { position: relative; }
 .filmes-busca .prod-achado-abrir.filme-achado { grid-template-columns: 40px minmax(0, 1.6fr) minmax(0, 1fr) 110px; padding: 8px 14px 8px 8px; }
 .filme-achado-capa { position: relative; display: block; width: 40px; aspect-ratio: 2 / 3; border-radius: 5px; overflow: hidden; background: var(--neutro); }
@@ -91,7 +91,7 @@
 .faixa-sessao li { scroll-snap-align: start; }
 
 /* o pôster: o card fechado da agenda (borda fina, sem sombra; o hover só acende a borda) */
-.poster-filme { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 6px 6px 9px; border-radius: 10px; background: var(--papel); border: 1px solid var(--regua); cursor: pointer; transition: border-color 0.2s var(--suave), background-color 0.2s var(--suave); animation: chegar-poster 0.46s var(--suave) both; animation-delay: calc(var(--i, 0) * 45ms); }
+.poster-filme { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 6px 6px 9px; border-radius: 10px; background: var(--papel); border: 1px solid var(--regua); cursor: pointer; transition: border-color var(--medio) var(--suave), background-color var(--medio) var(--suave); animation: chegar-poster 0.46s var(--suave) both; animation-delay: calc(var(--i, 0) * 45ms); }
 .poster-filme:hover { border-color: var(--regua-forte); }
 @keyframes chegar-poster { from { opacity: 0; transform: translateY(12px) scale(0.97); } }
 .poster-filme-capa { position: relative; display: block; width: 100%; aspect-ratio: 2 / 3; padding: 0; border: 0; border-radius: 6px; overflow: hidden; background: var(--neutro); cursor: pointer; }
@@ -148,7 +148,7 @@
 .ficha-filme-caminho-rotulo { font: 600 11px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--tinta3); }
 .ficha-filme-caminho code { min-width: 0; font: 500 12.5px/1.4 var(--mono); color: var(--tinta); overflow-wrap: anywhere; }
 .ficha-filme-vazio { font-size: 13px; color: var(--tinta3); }
-.ficha-filme-copiar { height: 32px; padding: 0 11px; border-radius: 9px; gap: 6px; font-size: 12.5px; white-space: nowrap; transition: background-color 0.15s var(--suave), color 0.15s var(--suave), border-color 0.15s var(--suave); }
+.ficha-filme-copiar { height: 32px; padding: 0 11px; border-radius: 9px; gap: 6px; font-size: 12.5px; white-space: nowrap; transition: background-color var(--rapido) var(--suave), color var(--rapido) var(--suave), border-color var(--rapido) var(--suave); }
 .ficha-filme-copiar.copiado { color: var(--ultra); border-color: color-mix(in srgb, var(--ultra) 40%, var(--regua)); background: color-mix(in srgb, var(--ultra-suave) 60%, transparent); }
 .ficha-filme-copiar-texto { display: inline-block; animation: trocar-texto 0.22s var(--suave); }
 @keyframes trocar-texto { from { opacity: 0; transform: translateY(3px); } }
@@ -248,7 +248,7 @@
   /* a borda que acende é a silhueta do papel (rasgado), em quatro contornos de 1px; nada de sombra projetada */
   --borda: transparent;
   filter: drop-shadow(1.2px 0 0 var(--borda)) drop-shadow(-1.2px 0 0 var(--borda)) drop-shadow(0 1.2px 0 var(--borda)) drop-shadow(0 -1.2px 0 var(--borda));
-  transition: --borda 0.2s var(--suave); animation: colar 0.5s var(--suave) both; animation-delay: calc(var(--i, 0) * 55ms); }
+  transition: --borda var(--medio) var(--suave); animation: colar 0.5s var(--suave) both; animation-delay: calc(var(--i, 0) * 55ms); }
 .poster-filme:hover .lambe { --borda: var(--aceso); }
 .lambe:focus-visible { outline: none; --borda: var(--ultra); }
 /* a única sombra: uma linha bem fraquinha embaixo do papel */

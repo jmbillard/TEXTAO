@@ -35,7 +35,7 @@
   padding: 0 8px 0 6px; border-radius: 999px; overflow: hidden;
   background: color-mix(in srgb, var(--tom) 11%, var(--cartao)); color: color-mix(in srgb, var(--tom) 72%, var(--tinta));
   font: 600 11px/1 var(--sans); letter-spacing: 0.01em; white-space: nowrap;
-  transition: background-color 0.2s var(--suave);
+  transition: background-color var(--medio) var(--suave);
 }
 .campanha[data-tom='1'] { --tom: var(--campanha-1); }
 .campanha[data-tom='2'] { --tom: var(--campanha-2); }
@@ -43,7 +43,7 @@
 .campanha[data-tom='4'] { --tom: var(--campanha-4); }
 .campanha[data-tom='5'] { --tom: var(--campanha-5); }
 .campanha:hover { background: color-mix(in srgb, var(--tom) 18%, var(--cartao)); }
-.campanha-bolinha { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--tom); transition: transform 0.2s var(--suave); }
+.campanha-bolinha { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--tom); transition: transform var(--medio) var(--suave); }
 .campanha:hover .campanha-bolinha { transform: scale(1.3); }
 .campanha-nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .campanha-abrir { display: inline-flex; align-items: center; gap: 5px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
@@ -52,7 +52,7 @@
 .campanha-abrir:focus-visible { outline: none; }
 .campanha:has(> .campanha-abrir:focus-visible) { box-shadow: 0 0 0 2px var(--tom); }
 .campanha.com-tirar { padding-right: 2px; }
-.campanha-tirar { flex: none; display: inline-grid; place-items: center; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 50%; background: none; color: inherit; opacity: 0.6; cursor: pointer; transition: opacity 0.15s var(--suave), background-color 0.15s var(--suave), transform 0.2s var(--suave); }
+.campanha-tirar { flex: none; display: inline-grid; place-items: center; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 50%; background: none; color: inherit; opacity: 0.6; cursor: pointer; transition: opacity var(--rapido) var(--suave), background-color var(--rapido) var(--suave), transform var(--medio) var(--suave); }
 .campanha-tirar:hover { opacity: 1; background: color-mix(in srgb, var(--tom) 22%, transparent); transform: rotate(90deg); }
 .campanha-tirar:focus-visible { opacity: 1; }
 

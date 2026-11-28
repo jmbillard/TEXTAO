@@ -37,9 +37,9 @@
 .prod-filtro .campanha-bolinha { width: 9px; height: 9px; }
 .prod-filtro .campanha-tirar { width: 22px; height: 22px; }
 .prod-escolher-campanha { position: relative; }
-.prod-campanha-botao { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 10px; border: 0; border-radius: 10px; background: transparent; color: var(--tinta2); font: 500 13.5px var(--sans); cursor: pointer; transition: background-color 0.15s var(--suave), color 0.15s var(--suave); }
+.prod-campanha-botao { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 10px; border: 0; border-radius: 10px; background: transparent; color: var(--tinta2); font: 500 13.5px var(--sans); cursor: pointer; transition: background-color var(--rapido) var(--suave), color var(--rapido) var(--suave); }
 .prod-campanha-botao:hover, .prod-campanha-botao[aria-expanded='true'] { background: var(--neutro); color: var(--tinta); }
-.prod-campanha-botao svg { transition: transform 0.2s var(--suave); }
+.prod-campanha-botao svg { transition: transform var(--medio) var(--suave); }
 .prod-campanha-botao[aria-expanded='true'] svg { transform: rotate(180deg); }
 /* duas bolinhas nos tons das campanhas: o sinal da etiqueta */
 .prod-campanha-bolinhas { flex: none; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; background: var(--campanha-1); box-shadow: 5px 0 0 var(--campanha-0); }
@@ -66,7 +66,7 @@
 .prod-pagina > .prod-blocos.reordenando { transition: none; scroll-snap-type: none; }
 
 /* ---------- o bloco da praça ---------- */
-.prod-bloco { display: flex; flex-direction: column; min-width: 0; overflow: clip; border: 1px solid var(--regua); border-radius: 14px; background: var(--cartao); box-shadow: var(--sombra-folha); transition: box-shadow var(--dur) var(--suave), border-color 0.2s var(--suave); }
+.prod-bloco { display: flex; flex-direction: column; min-width: 0; overflow: clip; border: 1px solid var(--regua); border-radius: 14px; background: var(--cartao); box-shadow: var(--sombra-folha); transition: box-shadow var(--dur) var(--suave), border-color var(--medio) var(--suave); }
 /* a praça no ar (#159): por cima das outras, levantada */
 .prod-bloco.levantado { position: relative; z-index: 5; box-shadow: var(--sombra-menu); border-color: var(--regua-forte); }
 /* no computador, o miolo do bloco aberto não encolhe com a largura que desliza: ele se revela, sem quebrar as linhas */
@@ -82,7 +82,7 @@
 .prod-bloco-topo button { cursor: pointer; }
 body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
 /* a alça (⠿): no dedo, a praça se arrasta por ela; no mouse, a faixa toda */
-.prod-alca { flex: none; align-self: center; width: 14px; margin: 0 -6px 0 -4px; color: var(--tinta3); font-size: 13px; line-height: 20px; text-align: center; cursor: grab; touch-action: none; opacity: 0.45; transition: opacity 0.15s var(--suave); }
+.prod-alca { flex: none; align-self: center; width: 14px; margin: 0 -6px 0 -4px; color: var(--tinta3); font-size: 13px; line-height: 20px; text-align: center; cursor: grab; touch-action: none; opacity: 0.45; transition: opacity var(--rapido) var(--suave); }
 .prod-bloco-topo:hover .prod-alca, .prod-recolhido:hover .prod-alca, .prod-bloco.levantado .prod-alca { opacity: 1; }
 @media (hover: none) { .prod-alca { opacity: 0.8; width: 24px; font-size: 16px; } }
 /* o nome da praça aberta chega deitando, de onde estava em pé na fechada */
@@ -149,12 +149,12 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
   margin: 0 -6px; padding: 9px 8px 8px; background: var(--neutro);
   font: 600 11.5px var(--sans); letter-spacing: 0.04em; text-transform: uppercase; color: var(--tinta2);
   /* o canto da coluna (#167): preso em cima, a quina continua redonda */
-  border-radius: 10px 10px 0 0; transition: padding 0.2s var(--suave);
+  border-radius: 10px 10px 0 0; transition: padding var(--medio) var(--suave);
 }
 /* a fenda (#167): uma sombra bem leve embaixo do cabeçalho preso, só onde há card passando por baixo dele */
 .prod-coluna h3::after {
   content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 10px; pointer-events: none;
-  background: linear-gradient(var(--fenda), transparent); opacity: 0; transition: opacity 0.2s var(--suave);
+  background: linear-gradient(var(--fenda), transparent); opacity: 0; transition: opacity var(--medio) var(--suave);
 }
 .prod-coluna[data-coberta] h3::after { opacity: 1; }
 /* com a área rolada, o cabeçalho baixa */
@@ -197,7 +197,7 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
 .prod-coluna[data-coluna='produzindo'] .prod-cards { min-width: 116px; }
 .prod-card {
   display: flex; flex-direction: column; gap: 3px; padding: 8px 9px 8px; border-radius: 9px; background: var(--papel); border: 1px solid var(--regua);
-  transition: border-color 0.2s var(--suave), background-color 0.2s var(--suave);
+  transition: border-color var(--medio) var(--suave), background-color var(--medio) var(--suave);
 }
 /* o hover é o da agenda (#167): só a borda, sem subir */
 .prod-card:hover { border-color: var(--regua-forte); }
@@ -249,8 +249,8 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
 .prod-card.arrastavel:active { cursor: grabbing; }
 /* com um card no ar, as colunas do bloco para onde ele pode ir ficam marcadas; a de baixo do cursor, mais forte. O
    contorno é uma camada por cima de tudo da coluna (também do nome preso em cima), para não ser cortado (#159) */
-.prod-coluna, .prod-coluna h3 { transition: background-color 0.15s var(--suave); }
-.prod-coluna::after { content: ''; position: absolute; inset: 0; z-index: 1; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 0 0 transparent; transition: box-shadow 0.15s var(--suave); }
+.prod-coluna, .prod-coluna h3 { transition: background-color var(--rapido) var(--suave); }
+.prod-coluna::after { content: ''; position: absolute; inset: 0; z-index: 1; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 0 0 transparent; transition: box-shadow var(--rapido) var(--suave); }
 .prod-coluna.aceita::after { box-shadow: inset 0 0 0 1.5px var(--regua-forte); }
 .prod-coluna.sobre::after { box-shadow: inset 0 0 0 2px var(--ultra); }
 .prod-coluna.sobre, .prod-coluna.sobre h3 { background: var(--ultra-suave); }
@@ -261,7 +261,7 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
   margin: 0 calc(-1 * var(--margem)); padding: 0 var(--margem) 28px;
   animation: chegar-busca var(--dur) var(--suave) both;
 }
-.prod-pagina > .prod-busca.saindo { animation: sair-busca 0.2s var(--suave) both; pointer-events: none; }
+.prod-pagina > .prod-busca.saindo { animation: sair-busca var(--medio) var(--suave) both; pointer-events: none; }
 .prod-achado-nome { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .prod-achado-claquete { font: 600 13px/1.3 var(--mono); letter-spacing: -0.01em; overflow-wrap: anywhere; }
 .prod-achado-atracao { font: 500 12px/1.3 var(--sans); color: var(--tinta2); overflow-wrap: anywhere; }
@@ -279,10 +279,10 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
 .pa-detalhe a { color: var(--tinta2); text-underline-offset: 3px; text-decoration-color: var(--regua-forte); }
 .pa-versao { display: inline-flex; align-items: center; gap: 4px; padding: 0 4px 0 7px; min-height: 20px; border-radius: 6px; background: var(--neutro); color: var(--tinta2); font: 500 11.5px/20px var(--mono); }
 .pa-versao:not(:has(.pa-lapis)) { padding-right: 7px; }
-.pa-lapis { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--tinta3); cursor: pointer; transition: color 0.15s var(--suave), background-color 0.15s var(--suave); }
+.pa-lapis { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--tinta3); cursor: pointer; transition: color var(--rapido) var(--suave), background-color var(--rapido) var(--suave); }
 .pa-lapis:hover { color: var(--tinta); background: color-mix(in srgb, var(--tinta) 8%, transparent); }
 .pa-topo .apelido-claquete { grid-column: 1 / -1; }
-.pa-recusa, .pa-falha { margin: 0; padding: 10px 14px; border-radius: 10px; background: var(--falta-fundo); color: var(--falta); font: 400 13.5px/1.45 var(--sans); animation: pa-surgir 0.2s var(--suave); }
+.pa-recusa, .pa-falha { margin: 0; padding: 10px 14px; border-radius: 10px; background: var(--falta-fundo); color: var(--falta); font: 400 13.5px/1.45 var(--sans); animation: pa-surgir var(--medio) var(--suave); }
 .pa-lendo { margin: 0; color: var(--tinta3); font: 400 14px var(--sans); }
 .pa-nada { margin: 4px 0 0; font: 600 18px/1 Caveat, cursive; color: var(--tinta3); transform: rotate(-1deg); transform-origin: left; }
 @keyframes pa-surgir { from { opacity: 0; transform: translateY(-4px); } }
@@ -291,11 +291,11 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
 .pa-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
 .pa-campo { position: relative; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .pa-rotulo { font: 600 11px var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: var(--tinta3); }
-.pa-valor { display: flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 10px; border: 1px solid var(--regua); border-radius: 10px; background: var(--cartao); text-align: left; font: 500 13.5px/1.3 var(--sans); color: var(--tinta); min-width: 0; cursor: pointer; transition: border-color 0.15s var(--suave), background-color 0.3s var(--suave); }
+.pa-valor { display: flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 10px; border: 1px solid var(--regua); border-radius: 10px; background: var(--cartao); text-align: left; font: 500 13.5px/1.3 var(--sans); color: var(--tinta); min-width: 0; cursor: pointer; transition: border-color var(--rapido) var(--suave), background-color 0.3s var(--suave); }
 .pa-valor:disabled { cursor: default; opacity: 1; }
 .pa-valor:not(:disabled):hover, .pa-valor[aria-expanded='true'] { border-color: var(--tinta3); }
 .pa-valor > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pa-valor svg { flex: none; color: var(--tinta3); transition: transform 0.2s var(--suave); }
+.pa-valor svg { flex: none; color: var(--tinta3); transition: transform var(--medio) var(--suave); }
 .pa-valor[aria-expanded='true'] svg { transform: rotate(180deg); }
 .pa-valor.passou { color: var(--falta); }
 .pa .vazio { color: var(--tinta3); font-weight: 400; }
@@ -335,7 +335,7 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
 .pa-parte h3 { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 6px; font: 600 11.5px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--tinta2); }
 .pa-parte h3 small { font: 600 16px/1 Caveat, cursive; letter-spacing: 0; text-transform: none; color: var(--tinta2); }
 .artes.so-lista.pa-artes { list-style: none; margin: 0 -26px; padding: 0; --vaga-gap: 0px; }
-.artes.so-lista.pa-artes li.pa-arte { display: flex; align-items: center; gap: 4px; margin: 0; padding: 0 22px 0 26px; border-radius: 0; transition: background-color 0.15s var(--suave); }
+.artes.so-lista.pa-artes li.pa-arte { display: flex; align-items: center; gap: 4px; margin: 0; padding: 0 22px 0 26px; border-radius: 0; transition: background-color var(--rapido) var(--suave); }
 .artes.so-lista.pa-artes li.pa-arte:hover { background: var(--neutro); }
 .pa-artes .arte-linha { gap: 12px; padding: 8px 4px; cursor: pointer; }
 .pa-artes .arte-linha:disabled { cursor: default; }
@@ -344,14 +344,14 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
 .pa-artes li.marcada .txt b { color: var(--tinta3); }
 .pa-artes .riscado-mao path { stroke: var(--ultra); }
 /* a bolinha: o número na laranja; feita, só o aro com o ✓ (sem verde); no hover a que falta mostra o ✓ */
-.pa-artes .b { transition: background-color 0.2s var(--suave), box-shadow 0.2s var(--suave), color 0.2s var(--suave); }
+.pa-artes .b { transition: background-color var(--medio) var(--suave), box-shadow var(--medio) var(--suave), color var(--medio) var(--suave); }
 .pa-artes .arte-linha:not(:disabled):hover .b[data-marca='produzir'] .num { display: none; }
 .pa-artes .arte-linha:not(:disabled):hover .b[data-marca='produzir'] svg { display: block; }
 .pa-artes li.marcada .b svg { animation: pa-certo 0.3s var(--suave); }
 @keyframes pa-certo { from { transform: scale(0.4); opacity: 0; } }
 .pa-artes li.marcada .cx .fogo { opacity: 0.45; }
 .pa-artes .cx:disabled { cursor: default; }
-.pa-artes .tirar-arte { opacity: 0; transition: opacity 0.15s var(--suave), color 0.15s var(--suave); }
+.pa-artes .tirar-arte { opacity: 0; transition: opacity var(--rapido) var(--suave), color var(--rapido) var(--suave); }
 .pa-artes li:hover .tirar-arte, .pa-artes .tirar-arte:focus-visible { opacity: 1; }
 @media (hover: none) { .pa-artes .tirar-arte { opacity: 1; } }
 /* a apagada sai para o lado enquanto a vaga fecha; a que volta (o desfazer) e a incluída chegam com o fundo tingido */
@@ -360,7 +360,7 @@ body.prod-reordenando, body.prod-reordenando * { cursor: grabbing !important; us
 @keyframes pa-arte-sai { to { opacity: 0; transform: translateX(18px); } }
 @keyframes pa-arte-volta { from, 25% { background-color: var(--ultra-suave); } }
 .pa-nova-arte { margin-top: 6px; }
-.pa-nova-arte-campo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; animation: pa-surgir 0.2s var(--suave); }
+.pa-nova-arte-campo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; animation: pa-surgir var(--medio) var(--suave); }
 .pa-nova-arte-campo input { flex: 1; min-width: 160px; height: 34px; padding: 0 10px; border: 1px solid var(--regua-forte); border-radius: 8px; background: var(--papel); color: var(--tinta); font: 500 13.5px var(--mono); outline: 0; }
 .pa-nova-arte-campo input:focus { border-color: var(--ultra); }
 

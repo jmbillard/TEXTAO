@@ -22,7 +22,7 @@
 .prod-achado-abrir {
   width: 100%; box-sizing: border-box; display: grid; grid-template-columns: 112px minmax(0, 1.7fr) 52px minmax(0, 1fr) 150px; align-items: center; gap: 4px 16px;
   padding: 10px 14px; border-radius: 10px; border: 1px solid var(--regua); background: var(--papel); color: var(--tinta); text-align: left; cursor: pointer; font: inherit;
-  transition: border-color 0.2s var(--suave), background-color 0.2s var(--suave);
+  transition: border-color var(--medio) var(--suave), background-color var(--medio) var(--suave);
 }
 /* o hover do card da agenda (#171): só a borda escurece, sem subir nem sombra */
 .prod-achado-abrir:hover { border-color: var(--regua-forte); }
