@@ -2153,7 +2153,11 @@ async function principal() {
   };
   const trello = { env: { ...PG, ...comTabelas({ ARTE_producao: 'arte_e2e' }), TRELLO_KEY: 'chave-falsa', TRELLO_TOKEN: 'token-falso' }, consultar: teable.consultar, buscar };
   const listas = { TRELLO_LISTA_SP: 'entradaSP', TRELLO_SAIDA_SP: 'saidaSP', TRELLO_LISTA_G5: 'entradaG5', TRELLO_SAIDA_G5: 'saidaG5' };
-  const s = await subir({ teable, pg: teable.abrirPg, trello, cadastros: (env) => criarCadastros(env, { buscar: teable }), env: { CADASTRO_ADMINS: CHEFE, ...TEABLE_FALSO, ...PG, ...listas } });
+  // os trabalhos de tempo em tempo do servidor (a releitura do Teable, a cada minuto de relógio) não rodam sozinhos: os
+  // passos arrumam as Produções direto no SQLite, e uma releitura que caísse no meio de um passo trazia de volta o que
+  // estava no Teable falso, mais vezes quanto mais lenta a máquina (#183). A releitura tem os testes dela no Vitest; a
+  // "releitura a cada minuto" conferida aqui é a da tela, pelo relógio do navegador
+  const s = await subir({ agendar: () => ({ unref() {} }), teable, pg: teable.abrirPg, trello, cadastros: (env) => criarCadastros(env, { buscar: teable }), env: { CADASTRO_ADMINS: CHEFE, ...TEABLE_FALSO, ...PG, ...listas } });
   await s.app.pessoasProntas;
   // o Roteiro (fictício) enviado para o card da Festa diz a atração
   const em = new Date().toISOString();
