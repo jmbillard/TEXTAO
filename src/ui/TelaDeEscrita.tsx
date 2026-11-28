@@ -3,10 +3,12 @@ import { EditorContent, useEditor } from '@tiptap/react';
 import History from '@tiptap/extension-history';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
-import { armazenamento, type Leitura } from '../dados/armazenamento';
+import { armazenamento, guardarOriginal, type Leitura } from '../dados/armazenamento';
 import { abrirSala, corDe } from '../dados/colaboracao';
 import { extensoesDoRoteiro, prepararColagem, Teclado } from '../editor/extensoes';
 import { Escrita, type PonteDaEscrita } from '../editor/escrita';
+import { ColagemNaEscrita } from '../editor/colagem';
+import { ComecarNaFolha, type ComecoLido } from './ComecarDeFora';
 import { metaVazia, type Meta, type Pessoa, type Roteiro } from '../modelo/tipos';
 import { casoDaLeitura, LinkQuebrado } from './LinkQuebrado';
 import { Compartilhar, type Convite } from './Compartilhar';
@@ -15,7 +17,7 @@ import { ComentariosNoTexto } from '../editor/comentarios';
 import { ArtesDaEscrita, EscritaNaFolha, RodapeDaEscrita } from './EscritaNaFolha';
 import { BolinhaDeEstado } from './pecas';
 import { Icone } from './icones';
-import { ATALHO_DE_COMENTAR, quandoComecou } from './util';
+import { ATALHO_DE_COMENTAR, plural, quandoComecou } from './util';
 import { Presentes } from './Filmes';
 import { useSalaDaEscrita } from './salaDaEscrita';
 import './escrita.css';
@@ -109,6 +111,8 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
       // o teclado da escrita (#190) vem antes do da revisão: o "/", o Tab nos tipos, o Ctrl+U no trecho, as fichas
       Escrita.configure({ ponte: () => ponte.current, programa: () => estado.current.meta.programa }),
       Teclado.configure({ programa: () => estado.current.meta.programa }),
+      // colar do Word no meio do texto (#195): linha a linha, com a arte inteira já do tipo arte
+      ColagemNaEscrita,
       // o grifo dos trechos comentados (#192): decoração, o documento não muda
       ComentariosNoTexto,
       // na sala, o texto é o do documento compartilhado (com o desfazer de cada um) e os cursores dos colegas
@@ -143,6 +147,21 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
   });
   // a marca de salvo junta a sala (o texto) e o PUT (quem vê)
   const marca: Salvamento = salvamento === 'erro' || gravacao === 'sem-conexao' ? 'erro' : salvamento === 'salvando' || gravacao === 'salvando' ? 'salvando' : 'salvo';
+
+  // o começo lido de um arquivo ou de um colado na folha vazia (#195): o texto com os tipos e as artes, o título (se
+  // ainda não há) e os campos de fora da meta; o original fica guardado no roteiro
+  const corpo = useRef<HTMLDivElement>(null);
+  const receberDeFora = ({ comeco, arquivo, original }: ComecoLido) => {
+    if (!editor) return;
+    editor.chain().setContent(comeco.doc, true).focus('end').run();
+    const novos: Partial<Meta> = { ...comeco.meta, ...(estado.current.meta.titulo.trim() || !comeco.titulo ? {} : { titulo: comeco.titulo }) };
+    setMeta((m) => ({ ...m, ...novos }));
+    if (sala) sala.doc.transact(() => Object.entries(novos).forEach(([k, v]) => v !== undefined && sala.meta.set(k, v)));
+    else mudou();
+    if (arquivo) void guardarOriginal(inicial.id, arquivo, original).catch(() => {});
+    const trechos = (comeco.doc.content ?? []).filter((p) => (p.content ?? []).length).length;
+    avisar(`${arquivo ? arquivo.name : 'O texto colado'} entrou na folha: ${plural(trechos, 'trecho', 'trechos')}, ${plural(comeco.nArtes, 'arte', 'artes')}.`);
+  };
 
   const mudou = () => {
     mexeu.current = true;
@@ -326,8 +345,10 @@ function Folha({ inicial, voltar, avisar, pessoa, topo }: { inicial: Roteiro; vo
           </header>
           {/* a margem fica à esquerda do texto, com o tipo de cada trecho (e o "?" do palpite, #190); os balões de
               comentário (#192) ficam à direita */}
-          <div className="folha-escrita-corpo" data-margem="tipos">
+          <div className="folha-escrita-corpo" data-margem="tipos" ref={corpo}>
             <EditorContent editor={editor} />
+            {/* #195: na folha vazia, começar de um arquivo ou de um texto colado */}
+            {escreve && <ComecarNaFolha corpo={corpo} vazia={vazia} pode={liberado && !!editor} receber={receberDeFora} falhou={avisar} />}
             <ComentariosDaFolha id={inicial.id} editor={editor} eu={pessoa} avisar={avisar} pedido={pedidoDeComentario} contar={setAbertos} />
             {editor && <EscritaNaFolha editor={editor} escreve={escreve} ponte={ponte} arteAberta={arteAberta} abrirArte={setArteAberta} />}
           </div>

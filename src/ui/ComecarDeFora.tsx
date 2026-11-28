@@ -4,6 +4,8 @@ import type { TextoOriginal } from '../dados/armazenamento';
 import { textoDoTrecho } from '../modelo/trecho';
 import type { NoJSON } from '../modelo/tipos';
 import { AvisoDeSoltar, useSeletorDeArquivos } from './pecas';
+import { Icone } from './icones';
+import { atalho } from './util';
 
 /* Começar o Roteiro de fora (#195, spec #186): abrir um .docx, RTF ou PDF (pelo seletor ou soltando na tela) ou colar
    um texto, na lista de "Roteiros" e na folha vazia. A leitura é a da fila, no navegador (`paraEscrever.ts`); quem usa
@@ -141,3 +143,70 @@ export function useComecoDeFora({ receber, falhou, soltar, colarNaJanela = false
 
 /** O que está sendo lido, numa linha: "Lendo Brasa.docx…", com a página do OCR. */
 export const fraseDoLendo = (l: Lendo) => `Lendo ${l.nome}…${l.detalhe ? ` ${l.detalhe}` : ''}`;
+
+/** Na folha vazia, o colado tem mais de uma linha (um roteiro, não uma palavra): começa pela leitura inteira da fila. */
+const ehRoteiroColado = (html: string, texto: string) => {
+  const linhas = (t: string) => t.split(/\r?\n/).filter((l) => l.trim()).length;
+  if (linhas(texto) > 1) return true;
+  if (!html) return false;
+  const corpo = new DOMParser().parseFromString(html, 'text/html').body;
+  return corpo.querySelectorAll('p, div, li, tr, br').length > 1 && linhas(corpo.innerText ?? corpo.textContent ?? '') > 1;
+};
+
+/**
+ * O convite da folha vazia (#195): abrir um .docx, RTF ou PDF, soltar o arquivo na folha ou colar o texto do Word.
+ * O colado de várias linhas na folha vazia começa pela leitura inteira da fila (o cabeçalho, as etiquetas, as artes);
+ * com texto na folha, o colar é o do editor (`ColagemNaEscrita`). `receber` põe o começo lido na folha.
+ */
+export function ComecarNaFolha({ corpo, vazia, pode, receber, falhou }: { corpo: React.RefObject<HTMLElement | null>; vazia: boolean; pode: boolean; receber: (lido: ComecoLido) => void; falhou: (motivo: string) => void }) {
+  const aberta = vazia && pode;
+  const abertaRef = useRef(aberta);
+  abertaRef.current = aberta;
+  const deFora = useComecoDeFora({
+    receber,
+    falhou,
+    soltar: pode,
+    recusarSolto: () => (abertaRef.current ? null : 'A folha já tem texto: para começar de um arquivo, solte-o na lista de Roteiros.'),
+  });
+  const lerRef = useRef(deFora.ler);
+  lerRef.current = deFora.ler;
+  // o colar chega antes do editor (na captura, pelo corpo da folha): só o do roteiro inteiro na folha vazia é daqui
+  useEffect(() => {
+    const el = corpo.current;
+    if (!el) return;
+    const colar = (e: ClipboardEvent) => {
+      if (!abertaRef.current) return;
+      const html = e.clipboardData?.getData('text/html') ?? '';
+      const texto = e.clipboardData?.getData('text/plain') ?? '';
+      if (!ehRoteiroColado(html, texto)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      void lerRef.current({ html, texto });
+    };
+    el.addEventListener('paste', colar, true);
+    return () => el.removeEventListener('paste', colar, true);
+  }, [corpo]);
+  return (
+    <>
+      {deFora.elemento}
+      {(aberta || deFora.lendo) && (
+        <p className="comecar-na-folha" role={deFora.lendo ? 'status' : undefined}>
+          {deFora.lendo ? (
+            <span className="comecar-na-folha-lendo">{fraseDoLendo(deFora.lendo)}</span>
+          ) : (
+            <>
+              <span>Ou comece de um roteiro pronto:</span>{' '}
+              <button type="button" className="botao-texto comecar-abrir" onMouseDown={(e) => e.preventDefault()} onClick={deFora.abrir}>
+                <Icone nome="importar" tam={13} traco={2} /> abrir um .docx, RTF ou PDF
+              </button>
+              <span aria-hidden="true"> · </span>
+              <span>
+                soltar o arquivo aqui ou colar o texto do Word (<kbd>{atalho('Mod-V')}</kbd>)
+              </span>
+            </>
+          )}
+        </p>
+      )}
+    </>
+  );
+}

@@ -63,7 +63,18 @@
 .folha-escrita.chegando .folha-escrita-corpo, .folha-escrita.chegando .folha-escrita-titulo { opacity: 0.35; }
 .folha-escrita.chegando.vazia .texto-escrita > p:first-child::before { content: 'Abrindo o roteiro…'; }
 
+/* a folha vazia também começa de um roteiro pronto (#195): o convite fica duas linhas abaixo do cursor, sem empurrar
+   o texto, e some com a primeira letra */
+.comecar-na-folha {
+  position: absolute; top: 4.2em; left: var(--margem-dos-tipos); right: 0; margin: 0;
+  font-size: 14px; line-height: 1.6; color: var(--tinta3); animation: entrar-suave 0.4s 0.2s var(--suave) both;
+}
+.comecar-na-folha .comecar-abrir { display: inline-flex; align-items: center; gap: 5px; font-size: inherit; }
+.comecar-na-folha kbd { font-size: 12px; }
+.comecar-na-folha-lendo { color: var(--tinta2); }
+
 @media (prefers-reduced-motion: reduce) {
+  .comecar-na-folha { animation: none; }
   .folha-escrita, .folha-escrita-titulo, .folha-escrita-corpo, .escrita-so-lendo, .folha-escrita .collaboration-cursor__label { animation: none; }
   .folha-escrita .folha-escrita-corpo, .folha-escrita .folha-escrita-titulo { transition: none; }
 }

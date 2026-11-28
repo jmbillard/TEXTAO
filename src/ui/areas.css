@@ -325,6 +325,10 @@ button.seg-ciclo:hover { box-shadow: inset 0 0 0 1px var(--regua-forte); }
 /* ---------- "Roteiros" (#189): a busca, o Novo roteiro, as abas e os escritos no PROMeiro ---------- */
 .roteiros-acoes { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; }
 .novo-roteiro { display: inline-flex; align-items: center; gap: 6px; }
+/* começar de um arquivo (#195): o Abrir arquivo ao lado do Novo roteiro, e o que está sendo lido */
+.abrir-roteiro { display: inline-flex; align-items: center; gap: 6px; }
+.aviso-meus.lendo-de-fora { animation: surgir var(--rapido) var(--suave); }
+@media (prefers-reduced-motion: reduce) { .aviso-meus.lendo-de-fora { animation: none; } }
 .abas-roteiros { margin: -2px 0 22px; flex-wrap: wrap; }
 .abas-cad .rot-fechada { display: inline-flex; align-items: baseline; gap: 2px; }
 .abas-cad .rot-fechada sup { margin-left: 0; }

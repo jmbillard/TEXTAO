@@ -30,11 +30,12 @@ export interface ComecoDeFora {
 }
 
 /** O título do roteiro aberto de fora: a atração e o título que a leitura achou ("Encontro · Chamada de 27/10"); sem
-    eles, o nome do arquivo. */
+    a atração, o nome que o redator deu ao arquivo ("Desafio Brasa 14 11"); sem arquivo (o colado), o título lido. */
 export function tituloDaImportacao(imp: Importacao): string {
-  const partes = [imp.meta.programa, imp.meta.titulo].map((x) => x?.trim()).filter(Boolean);
-  if (partes.length) return partes.join(' · ');
-  return imp.bruto.arquivo.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const programa = imp.meta.programa?.trim();
+  if (programa) return [programa, imp.meta.titulo?.trim()].filter(Boolean).join(' · ');
+  const doArquivo = imp.bruto.arquivo.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return doArquivo || imp.meta.titulo?.trim() || '';
 }
 
 /** O começo da folha a partir do que a fila leu. */

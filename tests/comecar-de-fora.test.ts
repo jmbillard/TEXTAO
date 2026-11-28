@@ -127,3 +127,11 @@ describe('comOsTiposGuardados', () => {
     expect(out.content![1].content![1].content![0].attrs).toEqual({ tipo: 'texto', confirmado: false });
   });
 });
+
+describe('o título do roteiro aberto de fora', () => {
+  it('a atração com o título lido; sem atração, o nome do arquivo; colado e sem nada, vazio', () => {
+    const doArquivo = comecoDaImportacao(interpretar(brutoDoTexto('A BRASA DECIDE.', 'Desafio_Brasa_14_11.docx')));
+    expect(doArquivo.titulo).toBe('Desafio Brasa 14 11');
+    expect(comecoDoColado('', 'A BRASA DECIDE.\nE O FOGO.').titulo).toBe('');
+  });
+});
